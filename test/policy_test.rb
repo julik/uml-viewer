@@ -89,6 +89,42 @@ module Uml
         graph = apply(scan({ "Order" => "models", "Pricing" => "services" }, [["Order", "Pricing"]]), "omit" => ["folder:services"])
         assert_equal ["Order"], graph["classes"].map { |c| c["id"] }
       end
+
+      def test_a_top_level_class_with_only_nested_constants_stays_in_its_kind_box
+        graph = apply(scan({ "Order" => "models" }, [], ["Order"]))
+        assert_equal ["folder:models"], graph["boxes"].map { |b| b["id"] }
+        assert_equal [{ "id" => "Order", "type" => "class" }], graph["boxes"].first["members"]
+      end
+
+      def test_omit_of_a_kind_box_keeps_a_top_level_class_that_has_nested_classes
+        classes = { "Payments" => "services", "Payments::Gateway" => "services", "Pricing" => "services" }
+        graph = apply(scan(classes, [], ["Payments"]), "omit" => ["folder:services"])
+        assert_equal ["Payments", "Payments::Gateway"], graph["classes"].map { |c| c["id"] }
+      end
+
+      def test_a_nested_class_that_is_also_a_child_namespace_is_listed_once_as_the_namespace
+        classes = { "Billing::Gateway" => "services", "Billing::Gateway::Client" => "services" }
+        graph = apply(scan(classes, [], ["Billing", "Billing::Gateway"]))
+        assert_equal [{ "id" => "Billing::Gateway", "type" => "namespace" }], graph["boxes"].first["members"]
+      end
+
+      def test_edge_kinds_override_to_association_clears_the_flag_and_the_arrow
+        graph = apply(scan({ "Order" => "models", "Pricing" => "services" }, [["Order", "Pricing"]]), "edge_kinds" => { "Order -> Pricing" => "association" })
+        assert_equal ["association", false], [graph["edges"].first["kind"], graph["edges"].first["violating"]]
+        refute graph["arrows"].first["violating"]
+      end
+
+      def test_edge_kinds_override_to_another_kind_keeps_the_level_check
+        graph = apply(scan({ "Order" => "models", "Pricing" => "services" }, [["Order", "Pricing"]]), "edge_kinds" => { "Order -> Pricing" => "inheritance" })
+        assert_equal ["inheritance", true], [graph["edges"].first["kind"], graph["edges"].first["violating"]]
+      end
+
+      def test_omit_edges_removes_the_pair_from_edges_and_arrow
+        classes = { "Order" => "models", "User" => "models", "Pricing" => "services" }
+        graph = apply(scan(classes, [["Order", "Pricing"], ["User", "Pricing"]]), "omit_edges" => ["Order -> Pricing"])
+        assert_equal [["User", "Pricing"]], graph["edges"].map { |e| [e["from"], e["to"]] }
+        assert_equal [["User", "Pricing"]], graph["arrows"].first["pairs"]
+      end
     end
   end
 end

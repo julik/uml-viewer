@@ -56,6 +56,15 @@ module Uml
         assert_raises(PolicyFile::Invalid) { Graph.build(workspace) }
         assert_equal old, File.read(workspace.path("graph.json"))
       end
+
+      def test_summary_foreign_leaves_out_names_listed_in_the_policy
+        workspace = Workspace.new(fixture)
+        Graph.prepare(workspace)
+        names = Graph.build(workspace)["summary"]["foreign"].map(&:first)
+        assert_includes names, "JSON"
+        workspace.write_atomic("policy.yml", File.read(workspace.path("policy.yml")).sub(/^foreign:.*$/, "foreign: [JSON]"))
+        refute_includes Graph.build(workspace)["summary"]["foreign"].map(&:first), "JSON"
+      end
     end
   end
 end
