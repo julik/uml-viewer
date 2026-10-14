@@ -7,7 +7,6 @@ module Uml
       class QueueFull < StandardError; end
 
       CAP = 100
-      EMPTY = { "next_id" => 1, "queue" => [] }.freeze
 
       def initialize(workspace)
         @workspace = workspace
@@ -32,7 +31,7 @@ module Uml
       end
 
       def queue
-        @workspace.read_json("to-agent.json", EMPTY)["queue"]
+        read_state["queue"]
       end
 
       def size
@@ -56,10 +55,14 @@ module Uml
 
       private
 
+      def read_state
+        @workspace.read_json("to-agent.json", { "next_id" => 1, "queue" => [] })
+      end
+
       def locked
         File.open(@workspace.path("to-agent.lock"), File::RDWR | File::CREAT, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
-          state = @workspace.read_json("to-agent.json", nil) || { "next_id" => 1, "queue" => [] }
+          state = read_state
           result = yield(state)
           @workspace.write_atomic("to-agent.json", JSON.generate(state))
           result

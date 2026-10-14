@@ -36,6 +36,20 @@ module Uml
         mailbox.done(id, failed: "target gone")
         assert_equal nxt, mailbox.peek["id"]
         assert_equal({ "id" => id, "op" => "omit", "reason" => "target gone" }, mailbox.last_failed.slice("id", "op", "reason"))
+        assert_equal %w[id op reason at], mailbox.last_failed.keys
+      end
+
+      def test_done_with_a_missing_id_and_a_reason_logs_nothing
+        mailbox.append(op: "propose")
+        mailbox.done(99, failed: "x")
+        assert_nil mailbox.last_failed
+        refute File.exist?(Workspace.new(fixture).path("failed.json"))
+        assert_equal 1, mailbox.size
+      end
+
+      def test_mutating_the_returned_queue_does_not_change_later_reads
+        mailbox.queue << { "id" => 7 }
+        assert_empty mailbox.queue
       end
 
       def test_peek_on_an_empty_queue_returns_nil_and_writes_nothing
@@ -75,6 +89,26 @@ module Uml
         pids.each { |pid| Process.wait(pid) }
         ids = mailbox.queue.map { |command| command["id"] }
         assert_equal 400, ids.uniq.size
+      end
+
+      def test_done_while_another_process_appends_loses_no_command
+        count = 50
+        script = "require 'uml/viewer'; m = Uml::Viewer::Mailbox.new(Uml::Viewer::Workspace.new(ARGV[0])); #{count}.times { m.append(op: 'propose') }"
+        pid = Process.spawn({ "UML_VIEWER_HOME" => @home }, RbConfig.ruby, "-Ilib", "-e", script, fixture)
+        handled = []
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
+        finished = false
+        until (finished && mailbox.peek.nil?) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+          finished = true if Process.wait(pid, Process::WNOHANG)
+          command = mailbox.peek
+          next unless command
+
+          mailbox.done(command["id"])
+          handled << command["id"]
+        end
+        Process.wait(pid) unless finished
+        remaining = mailbox.queue.map { |command| command["id"] }
+        assert_equal (1..count).to_a, (handled + remaining).sort
       end
     end
   end
