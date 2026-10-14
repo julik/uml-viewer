@@ -100,6 +100,7 @@ docs/milestone-1.md                          the manual record of criterion 5b
   ],
   "arrows": [{"from": "folder:models", "to": "Reports", "violating": true,
               "pairs": [["Order", "Reports::Summary"]]}],
+  "namespaces": ["Reports"],
   "proposals": [],
   "summary": {"classes": 17, "skipped": ["lib/scripts/run_once.rb"],
               "foreign": [["ActiveRecord", 1], ["JSON", 2]]}
