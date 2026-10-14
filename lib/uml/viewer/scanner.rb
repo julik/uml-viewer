@@ -104,10 +104,13 @@ module Uml
         pairs = Set.new
         foreign = Hash.new(0)
         parsed.each do |file, result|
-          next if declarations[file][:declared].empty?
+          declared = declarations[file][:declared]
+          next if declared.empty?
 
+          own = declared.map { |entry| entry[:id] } + declarations[file][:secondary]
+          main = main_constant(file, declared)[:id]
           References.new(result.value).collect.each do |reference|
-            from = aliases[reference[:owner]] || aliases[declarations[file][:declared].first[:id]]
+            from = own.include?(reference[:owner]) ? aliases[reference[:owner]] : main
             found = resolver.resolve(reference[:name], nesting: reference[:nesting], enclosing: reference[:nesting].last)
             if found.nil?
               foreign[reference[:name].delete_prefix("::").split("::").first] += 1

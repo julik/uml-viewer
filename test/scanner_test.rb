@@ -144,6 +144,41 @@ module Uml
         refute edge?("Caller", "Registry", in_scan: result)
       end
 
+      def test_a_superclass_and_a_data_block_belong_to_the_class_of_their_own_file_when_the_namespace_is_another_class
+        root = project(
+          "app/services/pricing.rb" => "class Pricing\nend\n",
+          "app/models/order.rb" => "class Order\n  def total = 0\nend\n",
+          "app/models/order/line.rb" => "class Order\n  class Line < Pricing\n  end\nend\n",
+          "app/services/payments.rb" => "class Payments\nend\n",
+          "app/services/payments/gateway.rb" => "module Payments\n  Result = Data.define(:ok) do\n    def price = Pricing.new\n  end\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert edge?("Order::Line", "Pricing", in_scan: result)
+        assert edge?("Payments::Result", "Pricing", in_scan: result)
+        refute edge?("Order", "Pricing", in_scan: result)
+        refute edge?("Payments", "Pricing", in_scan: result)
+      end
+
+      def test_struct_new_with_and_without_a_block_declares_a_data_class
+        root = project(
+          "app/services/point.rb" => "Point = Struct.new(:x)\n",
+          "app/services/shapes/circle.rb" => "module Shapes\n  Circle = Struct.new(:radius) do\n    def area = radius * radius\n  end\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert_equal ["Point", "Shapes::Circle"], result["classes"].map { |entry| entry["id"] }
+        assert_equal ["data", "data"], result["classes"].map { |entry| entry["stereotype"] }
+      end
+
+      def test_class_new_with_and_without_a_block_declares_a_data_class
+        root = project(
+          "app/services/errors/timeout.rb" => "module Errors\n  Timeout = Class.new(StandardError)\nend\n",
+          "app/services/errors/retry.rb" => "module Errors\n  Retry = Class.new do\n    def wait = 1\n  end\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert_equal ["Errors::Retry", "Errors::Timeout"], result["classes"].map { |entry| entry["id"] }
+        assert_equal ["data", "data"], result["classes"].map { |entry| entry["stereotype"] }
+      end
+
       def test_a_constant_read_inside_its_own_class_is_not_foreign
         refute_includes scan["foreign"].map(&:first), "STATUS_LABELS"
       end
