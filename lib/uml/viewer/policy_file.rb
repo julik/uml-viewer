@@ -30,6 +30,8 @@ module Uml
         validate(defaults.merge(data))
       rescue Psych::SyntaxError => error
         raise Invalid, "policy.yml line #{error.line}: #{error.problem}"
+      rescue Psych::Exception => error
+        raise Invalid, "policy.yml: #{error.message}"
       end
 
       def self.validate(policy)

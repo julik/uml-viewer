@@ -35,6 +35,21 @@ module Uml
         assert_equal "policy.yml: omit must be a list of names", error.message
       end
 
+      def test_a_date_value_raises_invalid_with_the_problem
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("title: 2026-10-14\n")) }
+        assert_equal "policy.yml: Tried to load unspecified class: Date", error.message
+      end
+
+      def test_a_symbol_value_raises_invalid_with_the_problem
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("omit: :sym\n")) }
+        assert_equal "policy.yml: Tried to load unspecified class: Symbol", error.message
+      end
+
+      def test_an_alias_raises_invalid_with_the_problem
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("a: &x [1]\nb: *x\n")) }
+        assert_match(/\Apolicy\.yml: Alias parsing was not enabled/, error.message)
+      end
+
       def test_an_empty_file_gives_the_defaults
         assert_equal PolicyFile::DEFAULTS, PolicyFile.load(write(""))
       end
