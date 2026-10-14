@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+require "uml/viewer"
+
+exit Uml::Viewer::Watcher.new(Uml::Viewer::Workspace.new(ARGV[1] || ".")).run if ARGV[0] == "watch"
+abort "uml-viewer: only watch exists yet"
