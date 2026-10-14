@@ -1,0 +1,2 @@
+class Payments::Gateway
+end
