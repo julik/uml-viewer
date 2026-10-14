@@ -1,0 +1,61 @@
+require "test_helper"
+
+module Uml
+  module Viewer
+    class GraphTest < TestCase
+      def graph
+        workspace = Workspace.new(fixture)
+        Graph.prepare(workspace)
+        Graph.build(workspace)
+      end
+
+      def edge(from, to)
+        graph["edges"].find { |e| e["from"] == from && e["to"] == to }
+      end
+
+      def test_the_first_example_of_the_spec_gives_a_red_dependency_from_order_to_reports_summary
+        assert_equal({ "from" => "Order", "to" => "Reports::Summary", "kind" => "dependency", "violating" => true }, edge("Order", "Reports::Summary"))
+      end
+
+      def test_reports_summary_to_order_is_not_violating
+        refute edge("Reports::Summary", "Order")["violating"]
+      end
+
+      def test_a_model_depending_on_a_top_level_service_shows_as_a_red_arrow_between_kind_boxes
+        arrow = graph["arrows"].find { |a| a["from"] == "folder:models" && a["to"] == "folder:services" }
+        assert arrow["violating"]
+        assert_includes arrow["pairs"], ["Order", "Pricing"]
+      end
+
+      def test_application_record_is_omitted_by_the_first_policy
+        assert_nil graph["classes"].find { |c| c["id"] == "ApplicationRecord" }
+      end
+
+      def test_build_writes_graph_json_into_the_state_folder_and_not_into_the_project
+        workspace = Workspace.new(fixture)
+        before = Dir.glob("**/*", File::FNM_DOTMATCH, base: fixture).sort
+        Graph.prepare(workspace)
+        Graph.build(workspace)
+        assert_equal "rails_shapes", workspace.read_json("graph.json", nil)["title"]
+        assert_equal before, Dir.glob("**/*", File::FNM_DOTMATCH, base: fixture).sort
+      end
+
+      def test_ids_hold_classes_boxes_and_namespaces
+        ids = Graph.ids(graph)
+        assert_includes ids, "Order"
+        assert_includes ids, "folder:models"
+        assert_includes ids, "Reports"
+      end
+
+      def test_an_invalid_policy_raises_and_keeps_the_old_graph
+        workspace = Workspace.new(fixture)
+        Graph.prepare(workspace)
+        Graph.build(workspace)
+        old = File.read(workspace.path("graph.json"))
+        workspace.write_atomic("policy.yml", "levels: [\n")
+        assert_raises(PolicyFile::Invalid) { Graph.build(workspace) }
+        assert_equal old, File.read(workspace.path("graph.json"))
+      end
+    end
+  end
+end
