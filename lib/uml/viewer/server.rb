@@ -1,4 +1,5 @@
 require "json"
+require "openssl"
 require "securerandom"
 require "time"
 require "webrick"
@@ -59,7 +60,7 @@ module Uml
         return respond(res, 403, "error" => "foreign host") unless local_host?(req["Host"])
         return static(res, STATIC[req.path]) if req.request_method == "GET" && STATIC.key?(req.path)
         return page(req, res) if req.request_method == "GET" && req.path == "/"
-        return respond(res, 403, EXPIRED) unless req["X-UML-Token"] == @token
+        return respond(res, 403, EXPIRED) unless token?(req["X-UML-Token"])
 
         case [req.request_method, req.path]
         when ["GET", "/graph.json"] then raw(res, 200, File.read(@workspace.path("graph.json")))
@@ -72,12 +73,16 @@ module Uml
         end
       end
 
+      def token?(given)
+        OpenSSL.secure_compare(given.to_s, @token)
+      end
+
       def local_host?(host)
         ["127.0.0.1:#{port}", "localhost:#{port}"].include?(host)
       end
 
       def page(req, res)
-        return respond(res, 403, EXPIRED) unless req.query["token"] == @token
+        return respond(res, 403, EXPIRED) unless token?(req.query["token"])
 
         res.status = 200
         res["Content-Type"] = "text/html; charset=utf-8"

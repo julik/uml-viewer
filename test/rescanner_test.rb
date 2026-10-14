@@ -8,10 +8,11 @@ module Uml
         inputs = []
         value = 1
         gate = Queue.new
-        rescanner = Rescanner.new(scan: -> { seen = value; gate.pop; inputs << seen })
+        started = Queue.new
+        rescanner = Rescanner.new(scan: -> { seen = value; started << seen; gate.pop; inputs << seen })
         rescanner.start
         rescanner.trigger
-        sleep 0.1
+        assert_equal 1, started.pop(timeout: 2), "the first scan never started"
         value = 2
         rescanner.trigger
         rescanner.trigger
@@ -34,6 +35,21 @@ module Uml
         fail_next = false
         rescanner.trigger
         Timeout.timeout(2, Timeout::Error, "the good scan never cleared the error") { sleep 0.05 until rescanner.error.nil? }
+      ensure
+        rescanner&.stop
+      end
+
+      def test_a_stack_overflow_in_a_scan_is_recorded_and_the_worker_keeps_scanning
+        overflow_next = true
+        rescanner = Rescanner.new(scan: -> { raise SystemStackError, "stack level too deep" if overflow_next })
+        rescanner.start
+        rescanner.trigger
+        Timeout.timeout(2, Timeout::Error, "the stack overflow was never recorded as the error") { sleep 0.05 until rescanner.error }
+        assert_equal "stack level too deep", rescanner.error
+        overflow_next = false
+        rescanner.trigger
+        Timeout.timeout(2, Timeout::Error, "the worker never ran a scan after the stack overflow") { sleep 0.05 until rescanner.scans == 2 }
+        assert_nil rescanner.error
       ensure
         rescanner&.stop
       end

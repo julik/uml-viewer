@@ -1,6 +1,6 @@
 require "test_helper"
 require "net/http"
-require "stringio"
+require "socket"
 require "timeout"
 
 module Uml
@@ -37,6 +37,21 @@ module Uml
         request(:post, "/commands", body: JSON.generate(body))
       end
 
+      def propose_of_size(bytes)
+        json = JSON.generate("op" => "propose")
+        json + (" " * (bytes - json.bytesize))
+      end
+
+      def chunked_command(*pieces)
+        socket = TCPSocket.new("127.0.0.1", @server.port)
+        chunks = pieces.map { |piece| "#{piece.bytesize.to_s(16)}\r\n#{piece}\r\n" }.join
+        socket.write("POST /commands HTTP/1.1\r\nHost: 127.0.0.1:#{@server.port}\r\nX-UML-Token: #{@server.token}\r\n" \
+                     "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n#{chunks}0\r\n\r\n")
+        socket.gets.split[1]
+      ensure
+        socket&.close
+      end
+
       def test_server_json_holds_port_pid_token_and_an_iso8601_start_time_with_mode_0600
         info = @workspace.server_info
         assert_equal [@server.port, Process.pid, @server.token], info.values_at("port", "pid", "token")
@@ -68,6 +83,24 @@ module Uml
       def test_a_foreign_host_header_is_refused
         assert_equal "403", request(:get, "/graph.json", host: "evil.example:#{@server.port}").code
         assert_equal "200", request(:get, "/graph.json", host: "localhost:#{@server.port}").code
+      end
+
+      def test_a_host_header_with_another_port_is_refused
+        assert_equal "403", request(:get, "/graph.json", host: "127.0.0.1:#{@server.port + 1}").code
+      end
+
+      def test_a_request_without_a_host_header_is_refused
+        socket = TCPSocket.new("127.0.0.1", @server.port)
+        socket.write("GET /graph.json HTTP/1.0\r\nX-UML-Token: #{@server.token}\r\n\r\n")
+        assert_equal "HTTP/1.1 403", socket.gets.to_s[0, 12]
+      ensure
+        socket&.close
+      end
+
+      def test_a_command_without_the_token_is_refused_and_not_queued
+        response = request(:post, "/commands", body: JSON.generate("op" => "propose"), token: nil)
+        assert_equal "403", response.code
+        assert_equal 0, Mailbox.new(@workspace).size
       end
 
       def test_a_preflight_without_the_token_is_refused_with_no_cors_allow_headers
@@ -106,17 +139,17 @@ module Uml
         assert_equal "413", response.code
       end
 
-      def test_a_chunked_body_over_4_kb_without_content_length_gets_413
-        http = Net::HTTP.new("127.0.0.1", @server.port)
-        req = Net::HTTP::Post.new("/commands")
-        req["X-UML-Token"] = @server.token
-        req["Content-Type"] = "application/json"
-        req["Transfer-Encoding"] = "chunked"
-        req.body_stream = StringIO.new(JSON.generate("op" => "propose", "pad" => "x" * 5000))
-        response = http.request(req)
-        assert_nil req["Content-Length"]
-        assert_equal "413", response.code
-        assert_equal 0, Mailbox.new(@workspace).size
+      def test_a_body_of_exactly_4096_bytes_is_queued_and_4097_bytes_gets_413
+        assert_equal "201", request(:post, "/commands", body: propose_of_size(4096)).code
+        assert_equal "413", request(:post, "/commands", body: propose_of_size(4097)).code
+        assert_equal 1, Mailbox.new(@workspace).size
+      end
+
+      def test_a_chunked_body_of_exactly_4096_bytes_is_queued_and_4097_bytes_gets_413
+        too_large = propose_of_size(4097)
+        assert_equal "201", chunked_command(propose_of_size(4096))
+        assert_equal "413", chunked_command(too_large[0, 4096], too_large[4096..])
+        assert_equal 1, Mailbox.new(@workspace).size
       end
 
       def test_a_full_queue_gets_429_with_the_message

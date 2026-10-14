@@ -51,7 +51,7 @@ module Uml
       def run_once
         @scan.call
         @error = nil
-      rescue StandardError => failure
+      rescue StandardError, SystemStackError => failure
         @error = failure.message
       ensure
         @scans += 1
