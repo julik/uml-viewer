@@ -1,0 +1,126 @@
+require "test_helper"
+require "stringio"
+require "timeout"
+
+module Uml
+  module Viewer
+    class CLITest < TestCase
+      def run_cli(*argv)
+        out = StringIO.new
+        err = StringIO.new
+        status = CLI.new(argv, out: out, err: err).run
+        [status, out.string, err.string]
+      end
+
+      def setup
+        super
+        @project = project_copy
+        ENV["UML_VIEWER_NO_BROWSER"] = "1"
+      end
+
+      def teardown
+        ENV.delete("UML_VIEWER_NO_BROWSER")
+        super
+      end
+
+      def test_path_prints_the_state_folder
+        assert_equal [0, "#{Workspace.new(@project).dir}\n", ""], run_cli("path", @project)
+      end
+
+      def test_a_missing_project_folder_prints_the_message_and_returns_1
+        assert_equal [1, "", "no such project folder: /no/such\n"], run_cli("scan", "/no/such")
+      end
+
+      def test_scan_writes_the_graph_and_prints_a_summary
+        status, out, = run_cli("scan", @project)
+        assert_equal 0, status
+        assert_match(/\A\d+ classes, \d+ edges, \d+ violating, skipped 1 files, no constant\n/, out)
+        assert File.exist?(Workspace.new(@project).path("graph.json"))
+      end
+
+      def test_scan_with_a_broken_policy_prints_the_line_and_returns_1
+        run_cli("init", @project)
+        Workspace.new(@project).write_atomic("policy.yml", "levels: [\n")
+        status, _, err = run_cli("scan", @project)
+        assert_equal 1, status
+        assert_match(/\Apolicy\.yml line \d+: /, err)
+      end
+
+      def test_inbox_prints_the_oldest_command_and_nothing_when_empty
+        assert_equal [0, "", ""], run_cli("inbox", @project)
+        Mailbox.new(Workspace.new(@project)).append(op: "propose")
+        status, out, = run_cli("inbox", @project)
+        assert_equal [0, "propose"], [status, JSON.parse(out)["op"]]
+      end
+
+      def test_done_removes_and_done_failed_logs
+        mailbox = Mailbox.new(Workspace.new(@project))
+        first = mailbox.append(op: "propose")
+        second = mailbox.append(op: "propose")
+        run_cli("done", first.to_s, @project)
+        run_cli("done", second.to_s, @project, "--failed", "target gone")
+        assert_equal 0, mailbox.size
+        assert_equal "target gone", mailbox.last_failed["reason"]
+      end
+
+      def test_init_writes_the_policy_once
+        assert_equal 0, run_cli("init", @project).first
+        assert_equal [0, "policy.yml exists: #{Workspace.new(@project).path('policy.yml')}\n", ""], run_cli("init", @project)
+      end
+
+      def test_a_second_start_with_a_live_server_prints_the_url_and_exits
+        workspace = Workspace.new(@project)
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => 4567, "token" => "abc"))
+        assert_equal [0, "already running at http://127.0.0.1:4567/?token=abc\n", ""], run_cli(@project)
+      end
+
+      def test_a_stale_server_json_is_replaced_by_a_normal_start
+        workspace = Workspace.new(@project)
+        dead = Process.spawn("true")
+        Process.wait(dead)
+        workspace.write_atomic("server.json", JSON.generate("pid" => dead, "port" => 4567, "token" => "abc"))
+        exe = File.expand_path("../exe/uml-viewer", __dir__)
+        child = Process.spawn({ "UML_VIEWER_HOME" => @home, "UML_VIEWER_NO_BROWSER" => "1" }, RbConfig.ruby, "-Ilib", exe, @project, out: File::NULL)
+        Timeout.timeout(15) { sleep 0.1 until workspace.server_info && workspace.server_info["pid"] == child }
+        refute_equal 4567, workspace.server_info["port"]
+      ensure
+        Process.kill("INT", child) if child
+        Process.wait(child) if child
+      end
+
+      def test_done_without_an_id_prints_usage_and_returns_2
+        status, _, err = run_cli("done")
+        assert_equal 2, status
+        assert_includes err, "usage: uml-viewer"
+      end
+
+      def test_done_with_a_non_numeric_id_prints_usage_and_returns_2
+        status, _, err = run_cli("done", "abc", @project)
+        assert_equal 2, status
+        assert_includes err, "usage: uml-viewer"
+      end
+
+      def test_done_with_an_unknown_option_prints_usage_and_returns_2
+        status, _, err = run_cli("done", "1", "--bogus")
+        assert_equal 2, status
+        assert_includes err, "usage: uml-viewer"
+      end
+
+      def test_done_with_an_id_that_is_not_queued_names_the_id_and_returns_1
+        status, out, err = run_cli("done", "7", @project)
+        assert_equal [1, "", "no command with id 7\n"], [status, out, err]
+      end
+
+      def test_an_argument_error_inside_scan_surfaces_instead_of_printing_usage
+        original = Graph.method(:build)
+        Graph.singleton_class.remove_method(:build)
+        Graph.define_singleton_method(:build) { |_workspace| raise ArgumentError, "boom" }
+        error = assert_raises(ArgumentError) { run_cli("scan", @project) }
+        assert_equal "boom", error.message
+      ensure
+        Graph.singleton_class.remove_method(:build)
+        Graph.define_singleton_method(:build, original)
+      end
+    end
+  end
+end
