@@ -99,7 +99,7 @@ module Uml
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
         finished = false
         until (finished && mailbox.peek.nil?) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-          finished = true if Process.wait(pid, Process::WNOHANG)
+          finished ||= !Process.wait(pid, Process::WNOHANG).nil?
           command = mailbox.peek
           next unless command
 
