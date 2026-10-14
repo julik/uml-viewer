@@ -658,7 +658,7 @@ Method: the eng-review skill, target B, after the private project names were rem
          PATH                                                           in SKILL.md (8.3)
 4   P2   Criterion 2 lost its real-project check; smoke only in         private expect.yml in the state folder;
          milestone 4                                                    smoke from milestone 1 (2, 10, 11)
-5   P2   Private traces: bin/mutate, real namespaces, exact counts      neutral names, rounded counts (all)
+5   P2   Private traces: a private script, real names, exact counts      neutral names, rounded counts (all)
 6   P2   Overlapping rescans could write an older graph last            one worker and a dirty flag (7.1)
 7   P2   cc had no definition                                           RuboCop node list minus iterator
                                                                         blocks (4.3)
