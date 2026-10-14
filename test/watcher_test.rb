@@ -28,8 +28,16 @@ module Uml
         Timeout.timeout(seconds) { @out.gets&.chomp }
       end
 
+      def wait_until_watching
+        Timeout.timeout(5, Timeout::Error, "watcher never wrote agent.json") do
+          sleep 0.05 until File.exist?(@workspace.path("agent.json"))
+        end
+      end
+
       def teardown
         Process.kill("TERM", @thread.pid) if @thread&.alive?
+        @thread&.join
+        @out&.close
         super
       end
 
@@ -45,7 +53,7 @@ module Uml
       def test_an_empty_queue_gives_no_summary_and_a_new_command_is_announced_once
         fake_server
         start_watch
-        sleep 0.7
+        wait_until_watching
         @mailbox.append(op: "omit", target: { "id" => "folder:models", "kind" => "box", "proposal_id" => nil })
         assert_equal "uml-viewer: command 1 omit folder:models", next_line
         @mailbox.append(op: "propose")
@@ -55,7 +63,7 @@ module Uml
       def test_exits_when_server_json_disappears
         fake_server
         start_watch
-        sleep 0.7
+        wait_until_watching
         File.delete(@workspace.path("server.json"))
         assert_equal "uml-viewer: server stopped", next_line
         assert_equal 0, Timeout.timeout(3) { @thread.value.exitstatus }
@@ -72,8 +80,25 @@ module Uml
       def test_writes_a_heartbeat
         fake_server
         start_watch
-        Timeout.timeout(3) { sleep 0.1 until File.exist?(@workspace.path("agent.json")) }
+        wait_until_watching
         assert_in_delta Time.now.to_f, @workspace.read_json("agent.json", {})["heartbeat"], 5
+      end
+
+      def test_the_heartbeat_keeps_advancing
+        fake_server
+        watcher = Thread.new { Watcher.new(@workspace, out: StringIO.new, interval: 0.02, heartbeat: 0.1).run }
+        beats = []
+        Timeout.timeout(5, Timeout::Error, "heartbeat did not advance twice") do
+          until beats.uniq.size >= 3
+            beat = @workspace.read_json("agent.json", {})["heartbeat"]
+            beats << beat if beat
+            sleep 0.02
+          end
+        end
+        assert_operator beats.uniq.size, :>=, 3
+      ensure
+        watcher&.kill
+        watcher&.join
       end
 
       def test_no_server_within_the_wait_gives_a_message_and_status_1
