@@ -19,7 +19,10 @@ module Uml
         @token = token
         @poll = poll
         @mailbox = Mailbox.new(workspace)
-        @rescanner = Rescanner.new(scan: -> { Graph.build(workspace) })
+        @rescanner = Rescanner.new(scan: lambda {
+          Graph.prepare(workspace)
+          Graph.build(workspace)
+        })
       end
 
       def start

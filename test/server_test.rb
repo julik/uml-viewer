@@ -204,6 +204,15 @@ module Uml
         end
       end
 
+      def test_a_rescan_after_policy_yml_was_deleted_writes_the_first_policy_again
+        File.delete(@workspace.path("policy.yml"))
+        assert_equal "202", request(:post, "/scans").code
+        Timeout.timeout(3, Timeout::Error, "the rescan never wrote policy.yml again") do
+          sleep 0.1 until File.exist?(@workspace.path("policy.yml"))
+        end
+        assert_includes File.read(@workspace.path("policy.yml")), "ApplicationRecord"
+      end
+
       def test_shutdown_removes_server_json
         @server.shutdown
         @thread.join(2)
