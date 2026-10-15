@@ -53,6 +53,17 @@ module Uml
         assert_includes failures, "#{File.basename(project)}: git status changed during the scan"
       end
 
+      def test_the_milestone_record_asks_for_the_facts_that_prove_the_gate
+        text = File.read(File.expand_path("../docs/milestone-1.md", __dir__))
+        ["Permission mode (must be default)",
+         "uml-viewer rules already in ~/.claude/settings*.json or project settings (must be none)",
+         "Tool that prompted, if any",
+         "Time from right-click Omit to policy.yml",
+         'stat -f %Sm "$(uml-viewer path <medium app>)/policy.yml"'].each do |field|
+          assert_includes text, field
+        end
+      end
+
       def test_a_scan_exception_is_a_failure_not_a_crash
         project = git_project
         File.write(Workspace.new(project).path("policy.yml"), "levels: [\n")

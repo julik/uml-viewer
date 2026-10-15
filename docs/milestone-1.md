@@ -3,24 +3,29 @@
 Fill this in by hand after a real session. Use the medium test app; do not name it here.
 
 ```
-Field                                        Value
------                                        -----
+Field                                                                                    Value
+-----                                                                                    -----
 Date
 Claude Code version
 uml-viewer commit
-Idle session woke on the Monitor event       yes / no
-Time from right-click Omit to policy.yml     seconds
-Permission prompts during the loop           count (must be 0)
-Large app first screen readable              yes / no, with a note
+Permission mode (must be default)
+uml-viewer rules already in ~/.claude/settings*.json or project settings (must be none)
+Idle session woke on the Monitor event                                                   yes / no
+Time from right-click Omit to policy.yml                                                 seconds
+Permission prompts during the loop                                                       count (must be 0)
+Tool that prompted, if any
+Large app first screen readable                                                          yes / no, with a note
 ```
 
 Steps:
 
-  1. `uml-viewer install-skill`
-  2. `uml-viewer <medium app>` in one terminal.
-  3. In Claude Code, ask: "watch the uml-viewer for <medium app>". Wait until the Monitor runs. Leave the session idle.
-  4. In the browser, right-click a class and choose Omit. Note the time.
-  5. Note the time when the class leaves the diagram, and count any permission prompts.
-  6. Open the large app and look at the first screen.
+  1. Check that no uml-viewer rule is in `~/.claude/settings.json`, `~/.claude/settings.local.json`, `.claude/settings.json` or `.claude/settings.local.json`. The skill must grant the rules on its own.
+  2. `uml-viewer install-skill`
+  3. `uml-viewer <medium app>` in one terminal.
+  4. Start Claude Code in the default permission mode (no `--permission-mode`, no auto-accept). Ask: "watch the uml-viewer for <medium app>". Wait until the Monitor runs. Leave the session idle.
+  5. In the browser, right-click a class and choose Omit. Note the time.
+  6. In another terminal, run `stat -f %Sm "$(uml-viewer path <medium app>)/policy.yml"` to read the time the agent saved policy.yml.
+  7. Note the time when the class leaves the diagram. Count any permission prompts, and write down the tool of each prompt.
+  8. Open the large app and look at the first screen.
 
 Result: milestone 1 is done when the session woke and the prompt count is 0. When the session did not wake, stop and design the doorbell again before milestone 2.
