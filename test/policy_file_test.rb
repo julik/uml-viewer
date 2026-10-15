@@ -50,6 +50,41 @@ module Uml
         assert_match(/\Apolicy\.yml: Alias parsing was not enabled/, error.message)
       end
 
+      def test_a_file_that_is_not_a_mapping_raises
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("- a\n- b\n")) }
+        assert_equal "policy.yml: the file must hold a mapping", error.message
+      end
+
+      def test_edge_kinds_that_is_not_a_mapping_raises
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("edge_kinds: [a]\n")) }
+        assert_equal "policy.yml: edge_kinds must be a mapping", error.message
+      end
+
+      def test_proposals_that_is_not_a_list_raises
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("proposals: {a: 1}\n")) }
+        assert_equal "policy.yml: proposals must be a list", error.message
+      end
+
+      def test_a_proposal_that_is_not_a_mapping_with_an_id_raises
+        ["proposals: [1]\n", "proposals:\n  - name: no id\n"].each do |text|
+          error = assert_raises(PolicyFile::Invalid, text) { PolicyFile.load(write(text)) }
+          assert_equal "policy.yml: each proposal must be a mapping with an id", error.message
+        end
+      end
+
+      def test_a_proposal_with_an_id_loads
+        policy = PolicyFile.load(write("proposals:\n  - id: p1\n    name: first\n"))
+        assert_equal [{ "id" => "p1", "name" => "first" }], policy["proposals"]
+      end
+
+      def test_a_list_key_without_a_value_gives_the_empty_default
+        policy = PolicyFile.load(write("omit:\n  # - Order\nforeign:\nproposals:\nedge_kinds:\n"))
+        assert_empty policy["omit"]
+        assert_empty policy["foreign"]
+        assert_empty policy["proposals"]
+        assert_empty policy["edge_kinds"]
+      end
+
       def test_an_empty_file_gives_the_defaults
         assert_equal PolicyFile::DEFAULTS, PolicyFile.load(write(""))
       end

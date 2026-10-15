@@ -27,7 +27,7 @@ module Uml
         data = YAML.safe_load(File.read(path)) || {}
         raise Invalid, "policy.yml: the file must hold a mapping" unless data.is_a?(Hash)
 
-        validate(defaults.merge(data))
+        validate(defaults.merge(data) { |_key, default, given| given.nil? ? default : given })
       rescue Psych::SyntaxError => error
         raise Invalid, "policy.yml line #{error.line}: #{error.problem}"
       rescue Psych::Exception => error
@@ -45,6 +45,9 @@ module Uml
         end
         raise Invalid, "policy.yml: edge_kinds must be a mapping" unless policy["edge_kinds"].is_a?(Hash)
         raise Invalid, "policy.yml: proposals must be a list" unless policy["proposals"].is_a?(Array)
+        unless policy["proposals"].all? { |proposal| proposal.is_a?(Hash) && !proposal["id"].nil? }
+          raise Invalid, "policy.yml: each proposal must be a mapping with an id"
+        end
 
         policy
       end
