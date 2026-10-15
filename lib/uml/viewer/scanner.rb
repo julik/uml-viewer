@@ -41,7 +41,7 @@ module Uml
           "namespaces" => namespaces.to_a.sort,
           "edges" => edges,
           "skipped" => skipped.sort,
-          "foreign" => foreign.sort_by { |name, count| [-count, name] }.first(20)
+          "foreign" => foreign.sort_by { |name, count| [-count, name] }
         }
       end
 

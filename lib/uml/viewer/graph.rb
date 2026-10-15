@@ -20,7 +20,7 @@ module Uml
           "title" => policy["title"].to_s.empty? ? File.basename(workspace.root) : policy["title"],
           "namespaces" => scan["namespaces"],
           "proposals" => policy["proposals"],
-          "summary" => { "classes" => applied["classes"].size, "skipped" => scan["skipped"], "foreign" => scan["foreign"].reject { |name, _| policy["foreign"].include?(name) } }
+          "summary" => { "classes" => applied["classes"].size, "skipped" => scan["skipped"], "foreign" => scan["foreign"].reject { |name, _| policy["foreign"].include?(name) }.first(20) }
         }.merge(applied)
         workspace.write_atomic("graph.json", JSON.generate(graph))
         graph

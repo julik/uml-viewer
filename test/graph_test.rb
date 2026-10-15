@@ -57,6 +57,20 @@ module Uml
         assert_equal old, File.read(workspace.path("graph.json"))
       end
 
+      def test_a_listed_foreign_name_takes_no_slot_of_the_top_20
+        names = ("A".."U").map { |letter| "Unknown#{letter}" }
+        root = Dir.mktmpdir("uml-viewer-project")
+        @project_parents << root
+        FileUtils.mkdir_p(File.join(root, "app/models"))
+        calls = names.map { |name| "  def #{name.downcase} = #{name}\n" }.join
+        File.write(File.join(root, "app/models/caller.rb"), "class Caller\n  def most = UnknownA\n#{calls}end\n")
+        workspace = Workspace.new(root)
+        Graph.prepare(workspace)
+        assert_equal 20, Graph.build(workspace)["summary"]["foreign"].size
+        workspace.write_atomic("policy.yml", File.read(workspace.path("policy.yml")).sub(/^foreign:.*$/, "foreign: [UnknownA]"))
+        assert_equal names.drop(1), Graph.build(workspace)["summary"]["foreign"].map(&:first)
+      end
+
       def test_summary_foreign_leaves_out_names_listed_in_the_policy
         workspace = Workspace.new(fixture)
         Graph.prepare(workspace)

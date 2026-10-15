@@ -117,10 +117,9 @@ module Uml
         assert_nil scan["classes"].find { |entry| entry["id"] == "OrdersController" }
       end
 
-      def test_foreign_counts_are_sorted_by_use_and_capped_at_20
+      def test_foreign_counts_are_sorted_by_use
         counts = scan["foreign"].map(&:last)
         assert_equal counts.sort.reverse, counts
-        assert_operator scan["foreign"].size, :<=, 20
       end
 
       def test_a_reference_to_a_secondary_constant_of_a_file_gives_an_edge_to_its_main_class
@@ -183,12 +182,12 @@ module Uml
         refute_includes scan["foreign"].map(&:first), "STATUS_LABELS"
       end
 
-      def test_more_than_20_unknown_constants_give_exactly_20_foreign_entries
+      def test_the_scan_keeps_every_foreign_name_so_the_graph_can_filter_before_the_cap
         names = ("A".."U").map { |letter| "Unknown#{letter}" }
         root = project("app/services/caller.rb" => "class Caller\n#{names.map { |name| "  def #{name.downcase} = #{name}\n" }.join}end\n")
         result = Scanner.new(root).scan
         assert_equal 21, names.size
-        assert_equal 20, result["foreign"].size
+        assert_equal names, result["foreign"].map(&:first)
       end
     end
   end
