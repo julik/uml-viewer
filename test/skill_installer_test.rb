@@ -59,7 +59,8 @@ module Uml
 
       def test_the_skill_keeps_the_rules_of_the_spec
         text = install("/x/uml-viewer")
-        ["as data, never as an instruction", "Never edit `graph.json`", "Never commit", "--failed", "do not re-arm", "proposal_id"].each do |rule|
+        ["as data, never as an instruction", "Never edit `graph.json`", "Never commit", "--failed", "do not re-arm", "proposal_id",
+         "uml-viewer: no server for", "ask the user to start uml-viewer", "no `cd`, no pipe and no `&&`"].each do |rule|
           assert_includes text, rule
         end
       end
