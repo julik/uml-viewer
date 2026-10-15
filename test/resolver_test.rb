@@ -17,7 +17,7 @@ module Uml
                      resolver.resolve("Reports::Summary::STATUS_LABELS", nesting: ["Order"], enclosing: "Order")
       end
 
-      def test_exact_match_runs_before_the_strip_step_so_a_top_level_class_is_found_from_a_namespace
+      def test_a_top_level_class_is_found_from_inside_a_namespace
         assert_equal [:class, "Order"],
                      resolver.resolve("Order", nesting: ["Reports", "Reports::Summary"], enclosing: "Reports::Summary")
       end
