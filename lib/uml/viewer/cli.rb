@@ -16,6 +16,8 @@ module Uml
       def run
         command = COMMANDS.include?(@argv.first) ? @argv.shift : "open"
         send("run_#{command.tr('-', '_')}")
+      rescue Interrupt
+        130
       rescue Workspace::MissingProject, PolicyFile::Invalid => error
         @err.puts error.message
         1
@@ -74,7 +76,7 @@ module Uml
       def parse_done_arguments
         failed = nil
         OptionParser.new { |opts| opts.on("--failed REASON") { |reason| failed = reason } }.parse!(@argv)
-        [Integer(@argv.shift), failed]
+        [Integer(@argv.shift, 10), failed]
       rescue OptionParser::ParseError, ArgumentError, TypeError
         nil
       end
@@ -109,7 +111,11 @@ module Uml
         open_browser(server.url)
         trap("INT") { Thread.new { server.shutdown } }
         trap("TERM") { Thread.new { server.shutdown } }
-        server.run
+        begin
+          server.run
+        ensure
+          server.shutdown
+        end
         0
       end
 

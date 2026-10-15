@@ -51,7 +51,7 @@ module Uml
         @stopping = true
         @rescanner.stop
         @http&.shutdown
-        File.delete(@workspace.path("server.json")) if File.exist?(@workspace.path("server.json"))
+        FileUtils.rm_f(@workspace.path("server.json"))
       end
 
       private

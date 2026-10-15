@@ -5,6 +5,28 @@ require "timeout"
 module Uml
   module Viewer
     class CLITest < TestCase
+      EXE = File.expand_path("../exe/uml-viewer", __dir__)
+
+      def spawn_exe(*args)
+        Process.spawn({ "UML_VIEWER_HOME" => @home, "UML_VIEWER_NO_BROWSER" => "1" }, RbConfig.ruby, "-Ilib", EXE, *args, out: File::NULL)
+      end
+
+      def assert_interrupt_exits_cleanly(child, workspace)
+        Process.kill("INT", child)
+        _, status = Timeout.timeout(5) { Process.wait2(child) }
+        assert_equal 0, status.exitstatus
+        refute File.exist?(workspace.path("server.json")), "server.json is still there after the process exited"
+      end
+
+      def stop_child(child)
+        return unless child
+
+        Process.kill("INT", child)
+        Process.wait(child)
+      rescue Errno::ESRCH, Errno::ECHILD
+        nil
+      end
+
       def run_cli(*argv)
         out = StringIO.new
         err = StringIO.new
@@ -79,13 +101,37 @@ module Uml
         dead = Process.spawn("true")
         Process.wait(dead)
         workspace.write_atomic("server.json", JSON.generate("pid" => dead, "port" => 4567, "token" => "abc"))
-        exe = File.expand_path("../exe/uml-viewer", __dir__)
-        child = Process.spawn({ "UML_VIEWER_HOME" => @home, "UML_VIEWER_NO_BROWSER" => "1" }, RbConfig.ruby, "-Ilib", exe, @project, out: File::NULL)
+        child = spawn_exe(@project)
         Timeout.timeout(15) { sleep 0.1 until workspace.server_info && workspace.server_info["pid"] == child }
         refute_equal 4567, workspace.server_info["port"]
+        assert_interrupt_exits_cleanly(child, workspace)
       ensure
-        Process.kill("INT", child) if child
-        Process.wait(child) if child
+        stop_child(child)
+      end
+
+      def test_ctrl_c_always_removes_server_json_before_the_process_exits
+        workspace = Workspace.new(@project)
+        8.times do
+          child = spawn_exe(@project)
+          Timeout.timeout(15) { sleep 0.05 until workspace.server_alive? }
+          assert_interrupt_exits_cleanly(child, workspace)
+        end
+      end
+
+      def test_ctrl_c_on_watch_exits_130_without_a_backtrace
+        workspace = Workspace.new(@project)
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => 1, "token" => "t"))
+        reader, writer = IO.pipe
+        child = Process.spawn({ "UML_VIEWER_HOME" => @home }, RbConfig.ruby, "-Ilib", EXE, "watch", @project, out: writer, err: writer)
+        writer.close
+        Timeout.timeout(15) { sleep 0.05 until File.exist?(workspace.path("agent.json")) }
+        Process.kill("INT", child)
+        _, status = Timeout.timeout(5) { Process.wait2(child) }
+        output = reader.read
+        assert_equal [130, ""], [status.exitstatus, output]
+      ensure
+        reader&.close
+        stop_child(child)
       end
 
       def test_done_without_an_id_prints_usage_and_returns_2
@@ -98,6 +144,13 @@ module Uml
         status, _, err = run_cli("done", "abc", @project)
         assert_equal 2, status
         assert_includes err, "usage: uml-viewer"
+      end
+
+      def test_done_reads_the_id_as_decimal_so_010_is_id_10
+        mailbox = Mailbox.new(Workspace.new(@project))
+        10.times { mailbox.append(op: "propose") }
+        assert_equal 0, run_cli("done", "010", @project).first
+        assert_equal [1, 2, 3, 4, 5, 6, 7, 8, 9], mailbox.queue.map { |command| command["id"] }
       end
 
       def test_done_with_an_unknown_option_prints_usage_and_returns_2
