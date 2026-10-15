@@ -140,6 +140,25 @@ module Uml
         wait_until(-> { "banner stayed #{@browser.at_css('#banner').text.inspect} after the graph was repaired" }) { @browser.at_css("#banner").text.empty? }
       end
 
+      def test_a_poll_during_a_slow_layout_starts_no_second_layout
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        @browser.evaluate(<<~JS)
+          (() => {
+            window.layouts = 0;
+            const layout = ELK.prototype.layout;
+            ELK.prototype.layout = function (...args) {
+              window.layouts += 1;
+              return new Promise((resolve) => setTimeout(resolve, 2500)).then(() => layout.apply(this, args));
+            };
+          })()
+        JS
+        Graph.build(@workspace)
+        wait_until(-> { "the changed graph never started a layout" }) { @browser.evaluate("window.layouts").positive? }
+        sleep 3.5
+        assert_equal 1, @browser.evaluate("window.layouts")
+      end
+
       def test_a_box_of_exactly_fifteen_classes_lists_all_of_them_and_no_more_line
         boot_box_project(15)
         @browser.goto(@server.url)
