@@ -55,11 +55,33 @@ module Uml
         refute workspace.server_alive?
       end
 
-      def test_server_alive_is_true_for_the_current_process
+      def test_server_alive_is_true_for_the_current_process_with_a_listening_port
         workspace = Workspace.new(Dir.mktmpdir)
-        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => 1, "token" => "t"))
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => open_port, "token" => "t"))
         assert workspace.server_alive?
         assert_equal Process.pid, workspace.server_info["pid"]
+      end
+
+      def test_server_alive_is_false_for_a_reused_pid_whose_port_refuses_connections
+        workspace = Workspace.new(Dir.mktmpdir)
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => closed_port, "token" => "t"))
+        refute workspace.server_alive?
+      end
+
+      def test_server_alive_is_false_for_server_json_that_is_not_an_object
+        workspace = Workspace.new(Dir.mktmpdir)
+        workspace.write_atomic("server.json", "[1, 2]")
+        refute workspace.server_alive?
+        workspace.write_atomic("server.json", "\"text\"")
+        refute workspace.server_alive?
+      end
+
+      def test_server_alive_is_false_for_a_pid_of_zero_or_below
+        workspace = Workspace.new(Dir.mktmpdir)
+        [0, -1].each do |pid|
+          workspace.write_atomic("server.json", JSON.generate("pid" => pid, "port" => open_port, "token" => "t"))
+          refute workspace.server_alive?, "pid #{pid} counts as alive"
+        end
       end
     end
   end

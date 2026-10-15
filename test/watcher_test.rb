@@ -15,7 +15,7 @@ module Uml
       end
 
       def fake_server(pid = Process.pid)
-        @workspace.write_atomic("server.json", JSON.generate("pid" => pid, "port" => 1, "token" => "t"))
+        @workspace.write_atomic("server.json", JSON.generate("pid" => pid, "port" => open_port, "token" => "t"))
       end
 
       def start_watch

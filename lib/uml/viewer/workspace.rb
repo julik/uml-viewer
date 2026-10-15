@@ -1,6 +1,7 @@
 require "digest"
 require "fileutils"
 require "json"
+require "socket"
 
 module Uml
   module Viewer
@@ -14,12 +15,22 @@ module Uml
       end
 
       def self.pid_alive?(pid)
-        Process.kill(0, Integer(pid))
+        pid = Integer(pid)
+        return false unless pid.positive?
+
+        Process.kill(0, pid)
         true
       rescue Errno::ESRCH, ArgumentError, TypeError
         false
       rescue Errno::EPERM
         true
+      end
+
+      def self.port_open?(port)
+        Socket.tcp("127.0.0.1", Integer(port), connect_timeout: 0.5).close
+        true
+      rescue SystemCallError, SocketError, ArgumentError, TypeError
+        false
       end
 
       def initialize(project_path)
@@ -57,7 +68,7 @@ module Uml
 
       def server_alive?
         info = server_info
-        !info.nil? && self.class.pid_alive?(info["pid"])
+        info.is_a?(Hash) && self.class.pid_alive?(info["pid"]) && self.class.port_open?(info["port"])
       end
     end
   end

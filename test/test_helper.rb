@@ -2,6 +2,7 @@ require "minitest/autorun"
 require "tmpdir"
 require "fileutils"
 require "json"
+require "socket"
 require "uml/viewer"
 
 module Uml
@@ -13,12 +14,27 @@ module Uml
         @home = Dir.mktmpdir("uml-viewer-home")
         ENV["UML_VIEWER_HOME"] = @home
         @project_parents = []
+        @listeners = []
       end
 
       def teardown
+        @listeners.each(&:close)
         ENV.delete("UML_VIEWER_HOME")
         FileUtils.rm_rf(@home)
         FileUtils.rm_rf(@project_parents)
+      end
+
+      def open_port
+        listener = TCPServer.new("127.0.0.1", 0)
+        @listeners << listener
+        listener.addr[1]
+      end
+
+      def closed_port
+        listener = TCPServer.new("127.0.0.1", 0)
+        port = listener.addr[1]
+        listener.close
+        port
       end
 
       def fixture(name = "rails_shapes")

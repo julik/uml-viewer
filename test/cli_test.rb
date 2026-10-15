@@ -92,8 +92,21 @@ module Uml
 
       def test_a_second_start_with_a_live_server_prints_the_url_and_exits
         workspace = Workspace.new(@project)
-        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => 4567, "token" => "abc"))
-        assert_equal [0, "already running at http://127.0.0.1:4567/?token=abc\n", ""], run_cli(@project)
+        port = open_port
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => port, "token" => "abc"))
+        assert_equal [0, "already running at http://127.0.0.1:#{port}/?token=abc\n", ""], run_cli(@project)
+      end
+
+      def test_a_server_json_with_a_live_pid_and_a_closed_port_is_replaced_by_a_normal_start
+        workspace = Workspace.new(@project)
+        stale = closed_port
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => stale, "token" => "abc"))
+        child = spawn_exe(@project)
+        Timeout.timeout(15) { sleep 0.1 until workspace.server_info && workspace.server_info["pid"] == child }
+        refute_equal stale, workspace.server_info["port"]
+        assert_interrupt_exits_cleanly(child, workspace)
+      ensure
+        stop_child(child)
       end
 
       def test_a_stale_server_json_is_replaced_by_a_normal_start
@@ -120,7 +133,7 @@ module Uml
 
       def test_ctrl_c_on_watch_exits_130_without_a_backtrace
         workspace = Workspace.new(@project)
-        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => 1, "token" => "t"))
+        workspace.write_atomic("server.json", JSON.generate("pid" => Process.pid, "port" => open_port, "token" => "t"))
         reader, writer = IO.pipe
         child = Process.spawn({ "UML_VIEWER_HOME" => @home }, RbConfig.ruby, "-Ilib", EXE, "watch", @project, out: writer, err: writer)
         writer.close
