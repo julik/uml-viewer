@@ -12,6 +12,11 @@ module Uml
         @projects = File.join(Workspace.home, "projects")
       end
 
+      def allowed_tools
+        bash = %w[path watch inbox done scan].map { |sub| "Bash(#{@exe} #{sub}:*)" }
+        bash + ["Edit(/#{@projects}/**/policy.yml)", "Write(/#{@projects}/**/policy.yml)", "Read(/#{@projects}/**)"]
+      end
+
       def install
         dir = File.join(@skills_dir, "uml-viewer")
         FileUtils.mkdir_p(dir)

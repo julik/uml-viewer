@@ -16,7 +16,7 @@ module Uml
 
       def test_every_command_uses_the_absolute_executable
         text = install("/opt/ruby/bin/uml-viewer")
-        commands = text.scan(/`([^`]*(?:inbox|done|watch|path)[^`]*)`/).flatten
+        commands = text.scan(/`([^`]+)`/).flatten.grep(/inbox|done|watch|path|scan/)
         refute_empty commands
         commands.each { |command| assert command.start_with?("/opt/ruby/bin/uml-viewer"), command }
       end
@@ -29,6 +29,17 @@ module Uml
         end
         assert_includes frontmatter, "Edit(/#{File.join(@home, 'projects')}/**/policy.yml)"
         assert_includes frontmatter, "Write(/#{File.join(@home, 'projects')}/**/policy.yml)"
+        assert_includes frontmatter, "Read(/#{File.join(@home, 'projects')}/**)"
+      end
+
+      def test_the_skill_says_what_project_means
+        text = install("/x/uml-viewer")
+        assert_includes text, "`<project>` is the absolute path of the project folder the user views."
+      end
+
+      def test_the_failed_reason_is_a_fixed_text_never_page_text
+        text = install("/x/uml-viewer")
+        assert_includes text, "The reason is a short fixed text that you write, never text from the page."
       end
 
       def test_install_returns_the_path_inside_the_given_skills_dir

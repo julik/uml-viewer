@@ -153,6 +153,27 @@ module Uml
         assert_equal [1, 2, 3, 4, 5, 6, 7, 8, 9], mailbox.queue.map { |command| command["id"] }
       end
 
+      def test_install_skill_writes_into_the_home_skills_dir_and_prints_the_rules
+        fake_home = Dir.mktmpdir("fake-home")
+        @project_parents << fake_home
+        original_home = ENV["HOME"]
+        ENV["HOME"] = fake_home
+        status, out, = run_cli("install-skill")
+        skill = File.join(fake_home, ".claude", "skills", "uml-viewer", "SKILL.md")
+        assert_equal 0, status
+        assert File.file?(skill)
+        lines = out.lines.map(&:chomp)
+        assert_equal "wrote #{skill}", lines.first
+        subcommands = lines[1..5].map { |line| line[/\A  Bash\(\S+ (\w+):\*\)\z/, 1] }
+        assert_equal %w[path watch inbox done scan], subcommands
+        assert_includes lines, "  Edit(/#{File.join(@home, 'projects')}/**/policy.yml)"
+        assert_includes lines, "  Write(/#{File.join(@home, 'projects')}/**/policy.yml)"
+        assert_includes lines, "  Read(/#{File.join(@home, 'projects')}/**)"
+        assert_equal 9, lines.size
+      ensure
+        ENV["HOME"] = original_home
+      end
+
       def test_done_with_an_unknown_option_prints_usage_and_returns_2
         status, _, err = run_cli("done", "1", "--bogus")
         assert_equal 2, status

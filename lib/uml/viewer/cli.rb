@@ -91,8 +91,9 @@ module Uml
       end
 
       def run_install_skill
-        path = SkillInstaller.new(executable: File.expand_path($PROGRAM_NAME)).install
-        @out.puts "wrote #{path}"
+        installer = SkillInstaller.new(executable: File.expand_path($PROGRAM_NAME))
+        @out.puts "wrote #{installer.install}"
+        installer.allowed_tools.each { |rule| @out.puts "  #{rule}" }
         0
       end
 
