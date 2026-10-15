@@ -41,6 +41,15 @@ module Uml
         assert_equal({ "queue" => [] }, Workspace.new(Dir.mktmpdir).read_json("to-agent.json", { "queue" => [] }))
       end
 
+      def test_a_relative_uml_viewer_home_is_expanded_against_the_current_folder
+        base = Dir.mktmpdir
+        ENV["UML_VIEWER_HOME"] = "state"
+        home = Dir.chdir(base) { Workspace.home }
+        assert_equal File.join(Dir.chdir(base) { Dir.pwd }, "state"), home
+      ensure
+        FileUtils.rm_rf(base)
+      end
+
       def test_a_missing_project_folder_raises_with_the_path_in_the_message
         error = assert_raises(Workspace::MissingProject) { Workspace.new("/no/such/folder") }
         assert_equal "no such project folder: /no/such/folder", error.message

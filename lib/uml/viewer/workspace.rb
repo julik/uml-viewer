@@ -11,7 +11,7 @@ module Uml
       attr_reader :root, :dir
 
       def self.home
-        ENV.fetch("UML_VIEWER_HOME") { File.join(Dir.home, ".uml-viewer") }
+        File.expand_path(ENV.fetch("UML_VIEWER_HOME") { File.join(Dir.home, ".uml-viewer") })
       end
 
       def self.pid_alive?(pid)
