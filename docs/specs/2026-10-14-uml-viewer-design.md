@@ -580,7 +580,7 @@ project path does not exist              CLI error                              
 - Repository: `uml-viewer`, gem name `uml-viewer`. By the RubyGems naming rule (a dash means a namespace), the code is `require "uml/viewer"`, `lib/uml/viewer/`, module `Uml::Viewer`.
 - Licences: the gemspec lists `["MIT", "EPL-2.0"]`. `LICENSE` (MIT) and the elkjs `LICENSE-EPL-2.0` are both in `spec.files`.
 - elkjs 0.12.0 is vendored unmodified as `lib/uml/viewer/web/elk.bundled.js`, with its EPL-2.0 license file next to it.
-- Runtime dependencies: `prism` (1.9 or later) and `webrick` (1.9 or later). No Rails, no ActiveSupport.
+- Runtime dependencies: `prism` (1.9 or later) and `webrick` (`~> 1.9`: the server relies on `ProcHandler` internals). No Rails, no ActiveSupport.
 - **Milestone 1, walking skeleton through the riskiest parts.** A thin path end to end on the medium app: a scan with classes, `dependency` edges and the Resolver; the kind boxes and namespace boxes on the first screen, laid out by elkjs; right-click Explain; the token check; the mailbox with `inbox` and `done`; `watch`; the skill; and Claude answering in the terminal; `rake smoke` with the `expect.yml` files. This retires the two unknowns first: whether elkjs gives a readable first screen for the large app, and whether the Monitor loop works in a real session. Milestone 1 is done only when criterion 5b passes. When the idle session does not wake on a Monitor event, stop and design the doorbell again before milestone 2.
 - **Milestone 2.** The full scanner rules (associations, ActiveAdmin, Data.define, reopened classes), levels and red arrows, drill-down, class card, source panel, rescans.
 - **Milestone 3.** Overlay (coverage, CRAP, mutation snapshot).

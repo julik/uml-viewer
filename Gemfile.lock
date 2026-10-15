@@ -3,7 +3,7 @@ PATH
   specs:
     uml-viewer (0.1.0)
       prism (>= 1.9)
-      webrick (>= 1.9)
+      webrick (~> 1.9)
 
 GEM
   remote: https://rubygems.org/

@@ -12,5 +12,5 @@ Gem::Specification.new do |spec|
   spec.bindir = "exe"
   spec.executables = ["uml-viewer"]
   spec.add_dependency "prism", ">= 1.9"
-  spec.add_dependency "webrick", ">= 1.9"
+  spec.add_dependency "webrick", "~> 1.9"
 end
