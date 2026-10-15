@@ -23,7 +23,7 @@ module Uml
       end
 
       def self.git_status(path)
-        Open3.capture2("git", "-C", path, "status", "--porcelain").first
+        Open3.capture2("git", "--no-optional-locks", "-C", path, "status", "--porcelain").first
       end
 
       def self.expectations(workspace, graph)

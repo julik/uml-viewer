@@ -38,6 +38,15 @@ module Uml
         assert_includes failures, "#{File.basename(project)}: Reports::Summary -> Order is dependency, violating false; expected dependency, violating true"
       end
 
+      def test_smoke_never_rewrites_the_git_index_of_the_viewed_project
+        project = git_project
+        File.utime(Time.now - 3600, Time.now - 3600, File.join(project, "app/models/order.rb"))
+        index = File.join(project, ".git/index")
+        before = Digest::SHA256.file(index).hexdigest
+        assert_empty Smoke.run([project], out: StringIO.new)
+        assert_equal before, Digest::SHA256.file(index).hexdigest, "smoke rewrote .git/index"
+      end
+
       def test_a_changed_git_status_fails
         project = git_project
         failures = Smoke.run([project], out: StringIO.new) { File.write(File.join(project, "stray.txt"), "x") }
