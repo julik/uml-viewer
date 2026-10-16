@@ -38,7 +38,7 @@ From the legacy app's coverage file (one RSpec suite, old array format, inner ti
 A   method coverage skips the    a 3-line `to_s`: def line hit 1, body line hit 0   coverage 0,         counting the def line
     def line                                                                        CRAP 2.0            gives 0.5, CRAP 1.13
 B   CRAP has the cube            a controller action: cc 10, body coverage 8/15     CRAP 20.16          no cube gives 56.67;
-                                                                                                        def line gives 18.35
+                                                                                                        def line gives 18.37
 C   class grade = mu + sigma     8 methods with CRAP 20.16, 4.37, 5.0, 2.0, 8.13,   mu 9.21, sigma      a sample sigma or no
     through crap_cutoffs         30.0, 3.01, 1.0 (sigma over all methods, one       9.70, mu + sigma    cube changes the
                                  weight per method)                                 18.91, grade 7      numbers
@@ -55,7 +55,7 @@ F   partial-run guard            309 of 316 scanned files in the resultset      
 
 These are rulings, recorded here so a reviewer can reject them.
 
-- **Sigma is the population standard deviation** (divide by n). The spec says "one weight per method" and does not say sample or population. Example C gives grade 7 under both, so it cannot tell; the unit test pins the population form with its own data.
+- **Sigma is the population standard deviation** (divide by n). The spec says "one weight per method" and does not say sample or population. In example C the two forms give sigma 9.70 and 10.37, and the unit test pins 9.70; the grade (7) is the same under both.
 - **Mutation grades per class and per box come from the summed counts** of their methods: `score = killed / (killed + survived + uncovered)` over the sum, `grade = max(1, ceil(score * 10))`. A snapshot key for a method that no longer exists is ignored. The op name `self.x` maps to the key `Class.x`, other ops to `Class#x`.
 - **A class node gets the same grade fields as a box:** `c_grade`, `m_grade` and `grade` (the mean of the C and M grades that exist, or null). The page colors class nodes and boxes the same way.
 - **An absent file in a partial run** gets no data (grey) and the card note "coverage looks partial: run the full suite". The spec gives the banner, not a card text.
@@ -64,6 +64,9 @@ These are rulings, recorded here so a reviewer can reject them.
 - **Rescans:** the coverage file and the mutation snapshot are inputs of the rescan poll, so a test run or a new snapshot recolors the diagram without a restart. The spec lists only source files and the policy; the user expects a fresh overlay after a test run.
 - **Coverage summary:** `graph["summary"]["coverage"]` is `{time, files, scanned, banner}`. `uml-viewer scan` and smoke print one coverage line from it.
 - **crap_cutoffs is validated** (backlog item): 9 numbers in rising order.
+- **A class with no tested method is red** (user decision in the eng-review, 2026-10-16). When every op of a class that has coverage data has coverage 0 (a file the tests never loaded, or a loaded file that no test runs), the class's C grade is 1, whatever its CRAP. CRAP alone would give a never-loaded class of simple methods grade 9 or 10 (green), the outcome spec 6.2 rejects. Box grades still pool the CRAP of all methods under the box. A class node shows the class's own grades.
+- **Result paths match through the project root** (eng-review). Coverage finds the root prefix that most result paths share with a scanned file, then keeps only `root + "/" + file` for a scanned file. A path of an engine or a vendored gem with the same tail as an app file is dropped, so it cannot add its hits to the app file.
+- **A result file must have the SimpleCov shape** (eng-review): each suite holds a numeric `timestamp` and a `coverage` mapping whose entries are arrays of integers and nils, or mappings whose `lines` is one. Anything else is "coverage file unreadable: <path>".
 - **Out of scope:** a mutation tool or writer (spec 12); coverage per branch (the spec uses line coverage only); a legend for the colors (the card states each grade).
 
 ## Review Focus
@@ -85,13 +88,40 @@ coverage older than a file               that file's coverage not used          
                                                                                    file"
 coverage file is not valid JSON or       coverage ignored, graph still written     banner and card: "coverage file unreadable:       coverage_test, graph_test,
 has the wrong shape                                                                <path>"                                           browser_test
-file absent from the resultset           coverage 0                                red C grade; card: "not loaded by the tests"      overlay_test, browser_test
+file absent from the resultset           coverage 0, C grade 1                     red C grade; card: "not loaded by the tests"      overlay_test, browser_test
 resultset from a partial run             absent files get no data                  grey C dots; banner: "coverage looks partial:     overlay_test, graph_test
                                                                                    N of M files; run the full suite"
 mutation snapshot unreadable             no M grades                               scan: "warning: mutation snapshot unreadable:     graph_test, cli_test
                                                                                    <path>"
 crap_cutoffs not 9 rising numbers        scan refuses, keeps the old graph         "policy.yml: crap_cutoffs must be 9 numbers in    policy_file_test
                                                                                    rising order"
+```
+
+## Engineering review record (2026-10-16)
+
+Method: the eng-review skill, target B, four passes, plus an independent second reviewer that applied Tasks 2 to 5 to a scratch copy and ran every red step, every green step, the full suite and hand mutations. 12 findings are the second reviewer's, 1 is mine. The user accepted the recommendation on every finding (finding 2 was a choice of three rules). The plan text above contains each fix.
+
+```
+#   Sev  Finding                                                          Fix (task)
+--  ---  -------                                                          ----------
+1   P1   the recovery test expected no banner, but 1 of 17 files is a     assert "not unreadable"; a graph test
+         partial run                                                      pins the partial banner (4)
+2   P1   a never-loaded class of simple methods graded green              a class with no tested method gets
+                                                                          C grade 1 (spec 6.2 updated) (1, 3)
+3   P2   an engine or vendored path with the same tail added its hits     match through the project root (1, 2)
+         to an app file; the suffix match was O(files x files)
+4   P2   the mutation tests could not tell ceil from round                a 1/3 score (3)
+5   P2   no boundary test for "fewer than half"                           4 and 5 of 10 (3)
+6   P2   browser tests appended below `private` never run                 "insert above private" (5)
+7   P3   three failure-table rows named tests no task wrote               CLI mutation warning, graph partial
+                                                                          banner, red class node (3, 4, 5)
+8   P3   a wrong shape inside a suite crashed the scan                    entries validated (2)
+9   P3   five tests could not tell (stale at equal time, end line, the    tests added (2, 3, 5)
+         "/" in the path, 6 of 9 cutoffs, the box fill)
+10  P3   Task 4's red runs were chained with &&                           `;` (4)
+11  P3   the M dot covered the level digit                                a 10 px dot strip (5)
+12  P3   two numbers in the plan text were wrong                          text fixed
+13  P3   a result file without a timestamp marked every file stale        unreadable shape (2)
 ```
 
 ## File structure
@@ -131,6 +161,7 @@ Documentation only, so no test. Make each edit with the exact text below.
 - Sigma is the population standard deviation: divide by the number of methods.
 - The M grade of a class or a box comes from the summed counts of its methods. The op `self.x` matches the key `Class.x`, other ops `Class#x`. A key for a method that no longer exists is ignored. A snapshot that is not valid JSON, or not a mapping of mappings, gives the scan warning "mutation snapshot unreadable: <path>" and no M grades.
 - A class node has the same grades as a box: the C grade, the M grade and their mean.
+- A class whose methods with coverage data all have coverage 0 gets C grade 1, whatever its CRAP: a class with no tested method is red. Box grades still pool the CRAP of all methods under the box.
 ```
 
 - [ ] **Step 2: Section 6.1.** After the bullet that starts with "**Partial run.**", insert:
@@ -138,6 +169,8 @@ Documentation only, so no test. Make each edit with the exact text below.
 ```
 - **Unreadable file.** A coverage file that is not valid JSON, or has the wrong shape, is ignored: every C dot is grey, and the banner and the card say "coverage file unreadable: <path>". The graph is still written.
 - In a partial run, the card of a class with an absent file says "coverage looks partial: run the full suite".
+- Paths match through the project root: the root is the prefix that most result paths share with a scanned file, and only `root/<scanned file>` counts. A path of an engine or a vendored gem with the same tail is dropped.
+- A suite without a numeric `timestamp`, or a line entry that is not an array of integers and nils, makes the file unreadable.
 ```
 
 - [ ] **Step 3: Section 7.1, rescans.** In the **Rescans** bullet, replace "or when a scanned file or a new `*.rb` file under the source roots changes." with "when a scanned file or a new `*.rb` file under the source roots changes, or when `coverage/.resultset.json` or the state folder's `mutation.json` changes."
@@ -175,7 +208,8 @@ git commit -m "docs(spec): record the milestone 3 rulings for sigma, mutation gr
 - Produces:
   - `Uml::Viewer::Coverage.load(root, scanned_files) -> nil | {"time" => Integer|nil, "lines" => {relative_file => [Integer|nil]}}`. `nil` when `<root>/coverage/.resultset.json` does not exist.
   - Raises `Uml::Viewer::Coverage::Unreadable` with the message `"coverage file unreadable: <absolute path>"` when the file is not valid JSON, cannot be read, or has the wrong shape (not a mapping of suites that each hold a `"coverage"` mapping).
-  - `Coverage.parse(resultset, scanned_files)` does the same on parsed data: `time` is the newest suite `"timestamp"`; the hits of every suite are added line by line (nil plus nil stays nil; nil counts as 0 next to a number); each absolute path maps to the longest scanned file it ends with (`"/#{file}"`), and a path that matches no scanned file is dropped.
+  - `Coverage.parse(resultset, scanned_files)` does the same on parsed data: `time` is the newest suite `"timestamp"`; the hits of every suite are added line by line (nil plus nil stays nil; nil counts as 0 next to a number). Paths match through the project root: for each result path, the longest scanned file it ends with (`"/#{file}"`) gives a candidate root (the path without that tail); the most common candidate is the root; only `root + "/" + file` paths for scanned files are kept.
+  - `Coverage.load` also raises `Unreadable` when a suite has no numeric `"timestamp"`, or when a coverage entry is not an array of integers and nils (or a mapping whose `"lines"` is one).
 
 - [ ] **Step 1: Write the failing test.** `test/coverage_test.rb`:
 
@@ -222,6 +256,16 @@ module Uml
         assert_equal ["app/models/order.rb"], Coverage.parse(resultset, files)["lines"].keys
       end
 
+      def test_a_path_with_the_same_tail_outside_the_project_root_is_dropped
+        resultset = { "RSpec" => { "coverage" => {
+          "/ci/app/models/order.rb" => [nil, 0, 0, nil],
+          "/ci/app/services/pricing.rb" => [nil, 1, nil],
+          "/ci/engines/billing/app/models/order.rb" => [nil, 4, 4, nil],
+          "/x/myapp/services/pricing.rb" => [nil, 9, nil]
+        }, "timestamp" => 1 } }
+        assert_equal({ "app/models/order.rb" => [nil, 0, 0, nil], "app/services/pricing.rb" => [nil, 1, nil] }, Coverage.parse(resultset, FILES)["lines"])
+      end
+
       def test_a_missing_file_gives_nil
         assert_nil Coverage.load(Dir.mktmpdir.tap { |dir| @project_parents << dir }, FILES)
       end
@@ -239,6 +283,18 @@ module Uml
         wrong_shape = root_with(JSON.generate("RSpec" => [1, 2]))
         assert_raises(Coverage::Unreadable) { Coverage.load(wrong_shape, FILES) }
       end
+
+      def test_bad_entries_and_a_missing_timestamp_are_unreadable
+        [
+          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => nil }, "timestamp" => 1 } },
+          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => "1,0" }, "timestamp" => 1 } },
+          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => [1, "0"] }, "timestamp" => 1 } },
+          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => { "lines" => nil } }, "timestamp" => 1 } },
+          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => [1, 0] } } }
+        ].each do |resultset|
+          assert_raises(Coverage::Unreadable, resultset.inspect) { Coverage.load(root_with(JSON.generate(resultset)), FILES) }
+        end
+      end
     end
   end
 end
@@ -247,12 +303,13 @@ end
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `bundle exec ruby -Itest -Ilib test/coverage_test.rb`
-Expected: 7 errors, `NameError: uninitialized constant Uml::Viewer::Coverage`.
+Expected: 9 errors, `NameError: uninitialized constant Uml::Viewer::Coverage`.
 
 - [ ] **Step 3: Write `lib/uml/viewer/coverage.rb`**
 
 ```ruby
 require "json"
+require "set"
 
 module Uml
   module Viewer
@@ -272,15 +329,24 @@ module Uml
       end
 
       def self.suites?(resultset)
-        resultset.is_a?(Hash) && resultset.values.all? { |suite| suite.is_a?(Hash) && suite["coverage"].is_a?(Hash) }
+        resultset.is_a?(Hash) && resultset.values.all? do |suite|
+          suite.is_a?(Hash) && suite["timestamp"].is_a?(Numeric) && suite["coverage"].is_a?(Hash) &&
+            suite["coverage"].values.all? { |entry| hits?(entry.is_a?(Hash) ? entry["lines"] : entry) }
+        end
+      end
+
+      def self.hits?(hits)
+        hits.is_a?(Array) && hits.all? { |hit| hit.nil? || hit.is_a?(Integer) }
       end
 
       def self.parse(resultset, scanned_files)
+        root = root_of(resultset.values.flat_map { |suite| suite["coverage"].keys }, scanned_files)
+        wanted = scanned_files.to_set
         lines = {}
         resultset.each_value do |suite|
           suite["coverage"].each do |absolute, value|
-            file = match(absolute, scanned_files)
-            next if file.nil?
+            file = root && absolute.start_with?("#{root}/") ? absolute.delete_prefix("#{root}/") : nil
+            next unless wanted.include?(file)
 
             lines[file] = add(lines[file], value.is_a?(Hash) ? value["lines"] : value)
           end
@@ -288,8 +354,13 @@ module Uml
         { "time" => resultset.values.filter_map { |suite| suite["timestamp"] }.max, "lines" => lines }
       end
 
-      def self.match(absolute, scanned_files)
-        scanned_files.select { |file| absolute == file || absolute.end_with?("/#{file}") }.max_by(&:size)
+      def self.root_of(paths, scanned_files)
+        by_name = scanned_files.group_by { |file| File.basename(file) }
+        candidates = paths.filter_map do |absolute|
+          file = by_name.fetch(File.basename(absolute), []).select { |name| absolute.end_with?("/#{name}") }.max_by(&:size)
+          file && absolute.delete_suffix("/#{file}")
+        end
+        candidates.tally.max_by { |_, count| count }&.first
       end
 
       def self.add(sum, hits)
@@ -311,9 +382,9 @@ In `lib/uml/viewer.rb`, add `require_relative "viewer/coverage"` directly after 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bundle exec ruby -Itest -Ilib test/coverage_test.rb`
-Expected: `7 runs, 0 failures, 0 errors`.
+Expected: `9 runs, 0 failures, 0 errors`.
 
-- [ ] **Step 5: Check that the tests can tell.** In `match`, replace `.max_by(&:size)` with `.min_by(&:size)`. Run the test. Expected: the longest-path test fails. Restore it.
+- [ ] **Step 5: Check that the tests can tell.** In `root_of`, replace `.max_by(&:size)` with `.min_by(&:size)`. Run the test. Expected: the longest-path test fails. Restore it. Then in `parse`, drop the `start_with?("#{root}/")` check (use `File.basename` matching instead). Expected: the outside-the-root test fails. Restore it.
 
 - [ ] **Step 6: Commit**
 
@@ -336,8 +407,8 @@ git commit -m "feat: read SimpleCov result files in both formats and map them to
 - Produces:
   - `Overlay.apply(classes, coverage:, mtimes:, mutation:, cutoffs:, missing_note: Overlay::NO_COVERAGE) -> {"classes" => [...], "coverage" => {"time", "files", "scanned", "banner"}}`. `mtimes` maps each class file to its mtime (Float, or nil). `mutation` is the parsed snapshot or nil.
   - Each op gains `"coverage"` (Float 0..1, or nil) and `"crap"` (Float, or nil).
-  - Each class gains `"coverage_notes"` ([String]), `"crap"` (`{"mu", "sigma", "grade"}` or nil), `"mutation"` (`{"score", "grade", "counts"}` or nil) and `"grade"` (the mean of the C and M grades that exist, Float, or nil).
-  - `Overlay.boxes(views, classes, cutoffs) -> views` adds `"c_grade"`, `"m_grade"` and `"grade"` to every class, namespace and folder node, pooled over all methods under the node.
+  - Each class gains `"coverage_notes"` ([String]), `"crap"` (`{"mu", "sigma", "grade"}` or nil; the grade is 1 when every op with coverage data has coverage 0), `"mutation"` (`{"score", "grade", "counts"}` or nil) and `"grade"` (the mean of the C and M grades that exist, Float, or nil).
+  - `Overlay.boxes(views, classes, cutoffs) -> views` adds `"c_grade"`, `"m_grade"` and `"grade"` to every class, namespace and folder node. A class node takes its class's own grades; a namespace or folder node pools the CRAP of all methods under it (one weight per method) and the summed mutation counts.
   - `Overlay.crap(cc, coverage)`, `Overlay.stats(values, cutoffs)`, `Overlay.grade(value, cutoffs)`.
   - Constants `NO_COVERAGE = "no coverage: run your tests with SimpleCov"`, `STALE = "coverage older than this file"`, `NOT_LOADED = "not loaded by the tests"`, `PARTIAL = "coverage looks partial: run the full suite"`.
 
@@ -391,7 +462,8 @@ module Uml
       end
 
       def test_each_grade_cutoff_on_both_sides
-        assert_equal [10, 9, 9, 8, 2, 1], [5, 5.01, 10, 10.01, 120, 120.01].map { |value| Overlay.grade(value, CUTOFFS) }
+        values = [5, 5.01, 10, 10.01, 15, 15.01, 20, 20.01, 30, 30.01, 40, 40.01, 60, 60.01, 80, 80.01, 120, 120.01]
+        assert_equal [10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1], values.map { |value| Overlay.grade(value, CUTOFFS) }
       end
 
       def test_an_endless_def_has_no_coverage_data_and_no_crap
@@ -424,7 +496,35 @@ module Uml
         result = apply(present + absent, lines: lines)
         missing = result["classes"].find { |entry| entry["id"] == "Absent1" }
         assert_equal [0.0, 6.0, ["not loaded by the tests"]], [missing["ops"].first["coverage"], missing["ops"].first["crap"], missing["coverage_notes"]]
+        assert_equal 1, missing["crap"]["grade"]
         assert_nil result["coverage"]["banner"]
+      end
+
+      def test_a_loaded_class_that_no_test_runs_is_grade_one_and_one_tested_method_lifts_it
+        untested = klass("Untested", [op("a", 1, 1, 3), op("b", 1, 4, 6)])
+        tested = klass("Tested", [op("a", 1, 1, 3, file: "app/models/tested.rb"), op("b", 1, 4, 6, file: "app/models/tested.rb")])
+        lines = { "app/models/order.rb" => [1, 0, nil, 1, 0, nil], "app/models/tested.rb" => [1, 0, nil, 1, 1, nil] }
+        result = apply([untested, tested], lines: lines)["classes"]
+        assert_equal [1, 10], result.map { |entry| entry["crap"]["grade"] }
+      end
+
+      def test_the_partial_guard_is_fewer_than_half
+        build = lambda do |present|
+          classes = (1..10).map { |number| klass("Item#{number}", [op("run", 1, 1, 3, file: "app/models/item#{number}.rb")]) }
+          apply(classes, lines: (1..present).to_h { |number| ["app/models/item#{number}.rb", [1, 1, nil]] })["coverage"]["banner"]
+        end
+        assert_equal "coverage looks partial: 4 of 10 files; run the full suite", build.call(4)
+        assert_nil build.call(5)
+      end
+
+      def test_a_file_changed_at_the_coverage_time_is_not_stale
+        result = apply([klass("Order", [op("total", 1, 1, 3)])], lines: { "app/models/order.rb" => [1, 1, nil] }, time: 100, mtimes: { "app/models/order.rb" => 100.0 })
+        assert_equal 1.0, result["classes"].first["ops"].first["coverage"]
+      end
+
+      def test_a_hit_end_line_does_not_count
+        result = apply([klass("Order", [op("total", 1, 1, 3)])], lines: { "app/models/order.rb" => [1, 0, 1] })
+        assert_equal 0.0, result["classes"].first["ops"].first["coverage"]
       end
 
       def test_a_partial_run_leaves_absent_files_grey_and_shows_the_banner
@@ -458,10 +558,12 @@ module Uml
         assert_equal [7, 7.0], [result["mutation"]["grade"], result["grade"]]
       end
 
-      def test_a_mutation_score_of_zero_still_grades_one
+      def test_a_mutation_score_of_zero_still_grades_one_and_a_third_rounds_up
         classes = [klass("Order", [op("total", 1, 1, 3)])]
         result = apply(classes, coverage: nil, mutation: { "Order#total" => { "killed" => 0, "survived" => 2, "uncovered" => 0 } })
         assert_equal 1, result["classes"].first["mutation"]["grade"]
+        result = apply(classes, coverage: nil, mutation: { "Order#total" => { "killed" => 1, "survived" => 1, "uncovered" => 1 } })
+        assert_equal 4, result["classes"].first["mutation"]["grade"]
       end
 
       def test_the_class_grade_is_the_mean_of_the_c_and_m_grades
@@ -481,7 +583,7 @@ module Uml
         billing = views["root"]["nodes"].find { |node| node["id"] == "Billing" }
         assert_equal [Overlay.stats([1.0, 20.0, 20.0], CUTOFFS)["grade"], nil], billing.values_at("c_grade", "m_grade")
         client = views["Billing::Gateway"]["nodes"].find { |node| node["id"] == "Billing::Gateway::Client" }
-        assert_equal Overlay.stats([20.0, 20.0], CUTOFFS)["grade"], client["c_grade"]
+        assert_equal 1, client["c_grade"]
         limits = views["Billing"]["nodes"].find { |node| node["id"] == "Billing::Limits" }
         assert_equal [nil, nil, nil], limits.values_at("c_grade", "m_grade", "grade")
       end
@@ -493,7 +595,7 @@ end
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `bundle exec ruby -Itest -Ilib test/overlay_test.rb`
-Expected: 17 errors, `NameError: uninitialized constant Uml::Viewer::Overlay`.
+Expected: 21 errors, `NameError: uninitialized constant Uml::Viewer::Overlay`.
 
 - [ ] **Step 3: Write `lib/uml/viewer/overlay.rb`**
 
@@ -515,8 +617,7 @@ module Uml
         notes = { none: missing_note, stale: STALE, absent: NOT_LOADED, partial: PARTIAL }
         graded = classes.map do |entry|
           ops = entry["ops"].map { |op| with_metrics(op, states[op["file"]], coverage) }
-          craps = ops.filter_map { |op| op["crap"] }
-          crap = craps.empty? ? nil : stats(craps, cutoffs)
+          crap = class_crap(ops, cutoffs)
           counts = mutation_counts(entry["id"], ops, mutation)
           tested = counts && mutation_grade(counts)
           entry.merge(
@@ -525,6 +626,14 @@ module Uml
           )
         end
         { "classes" => graded, "coverage" => summary(coverage, present, files.size, partial) }
+      end
+
+      def self.class_crap(ops, cutoffs)
+        measured = ops.reject { |op| op["coverage"].nil? }
+        return nil if measured.empty?
+
+        crap = stats(measured.map { |op| op["crap"] }, cutoffs)
+        measured.all? { |op| op["coverage"].zero? } ? crap.merge("grade" => 1) : crap
       end
 
       def self.file_state(file, coverage, mtimes, partial)
@@ -605,12 +714,20 @@ module Uml
       end
 
       def self.node_grades(node, views, by_id, cutoffs, memo)
-        ids = case node["type"]
-              when "class" then [node["id"]]
-              when "namespace", "folder" then classes_under(node["id"], views, memo)
-              else return {}
-              end
-        entries = ids.filter_map { |id| by_id[id] }
+        return class_grades(by_id[node["id"]]) if node["type"] == "class"
+        return {} unless %w[namespace folder].include?(node["type"])
+
+        entries = classes_under(node["id"], views, memo).filter_map { |id| by_id[id] }
+        pooled(entries, cutoffs)
+      end
+
+      def self.class_grades(entry)
+        return { "c_grade" => nil, "m_grade" => nil, "grade" => nil } if entry.nil?
+
+        { "c_grade" => entry["crap"]&.fetch("grade"), "m_grade" => entry["mutation"]&.fetch("grade"), "grade" => entry["grade"] }
+      end
+
+      def self.pooled(entries, cutoffs)
         craps = entries.flat_map { |entry| entry["ops"].filter_map { |op| op["crap"] } }
         counts = entries.filter_map { |entry| entry.dig("mutation", "counts") }
         crap = craps.empty? ? nil : stats(craps, cutoffs)
@@ -637,9 +754,9 @@ In `lib/uml/viewer.rb`, add `require_relative "viewer/overlay"` directly after `
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bundle exec ruby -Itest -Ilib test/overlay_test.rb`
-Expected: `17 runs, 0 failures, 0 errors`.
+Expected: `21 runs, 0 failures, 0 errors`.
 
-- [ ] **Step 5: Check that the tests can tell.** In `crap`, change `((1 - coverage)**3)` to `(1 - coverage)`. Run the test. Expected: the real-controller test and the 0/0.5/1 test fail. Restore it. Then in `body_coverage`, change `(op["line_start"] + 1)` to `op["line_start"]`. Expected: the def-line test fails. Restore it.
+- [ ] **Step 5: Check that the tests can tell.** In `class_crap`, drop the `.merge("grade" => 1)` branch. Run the test. Expected: the never-loaded and no-test-runs tests fail. Restore it. In `crap`, change `((1 - coverage)**3)` to `(1 - coverage)`. Run the test. Expected: the real-controller test and the 0/0.5/1 test fail. Restore it. Then in `body_coverage`, change `(op["line_start"] + 1)` to `op["line_start"]`. Expected: the def-line test fails. Restore it.
 
 - [ ] **Step 6: Commit**
 
@@ -703,7 +820,16 @@ git commit -m "feat: compute method coverage, CRAP and the C and M grades per cl
         assert_equal "coverage file unreadable: #{path}", graph["summary"]["coverage"]["banner"]
         assert_equal ["coverage file unreadable: #{path}"], graph["classes"].find { |entry| entry["id"] == "Pricing" }["coverage_notes"]
         write_coverage(project, resultset_for(project, { "app/services/pricing.rb" => [nil, 1, 1, nil, nil] }))
-        assert_nil Graph.build(workspace)["summary"]["coverage"]["banner"]
+        refute_equal "coverage file unreadable: #{path}", Graph.build(workspace)["summary"]["coverage"]["banner"]
+      end
+
+      def test_a_partial_result_file_shows_the_partial_banner
+        project = project_copy
+        write_coverage(project, resultset_for(project, { "app/services/pricing.rb" => [nil, 1, 1, nil, nil] }))
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        coverage = Graph.build(workspace)["summary"]["coverage"]
+        assert_equal "coverage looks partial: 1 of #{coverage['scanned']} files; run the full suite", coverage["banner"]
       end
 
       def test_a_mutation_snapshot_gives_m_grades_and_a_broken_one_a_warning
@@ -746,6 +872,14 @@ In `test/cli_test.rb`, in `test_scan_prints_the_association_counts_and_each_warn
 ```ruby
         assert_equal "coverage: none", lines[3]
         assert_equal ["warning: levels: unknown folder workers"], lines.drop(4)
+      end
+
+      def test_scan_warns_about_an_unreadable_mutation_snapshot
+        run_cli("init", @project)
+        workspace = Workspace.new(@project)
+        workspace.write_atomic("mutation.json", "{")
+        _, out, = run_cli("scan", @project)
+        assert_includes out.lines(chomp: true), "warning: mutation snapshot unreadable: #{workspace.path('mutation.json')}"
 ```
 
 Add to `test/smoke_test.rb`:
@@ -773,7 +907,7 @@ Add to `test/server_test.rb`:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bundle exec ruby -Itest -Ilib test/graph_test.rb && bundle exec ruby -Itest -Ilib test/policy_file_test.rb && bundle exec ruby -Itest -Ilib test/cli_test.rb -n /association_counts/ && bundle exec ruby -Itest -Ilib test/smoke_test.rb -n /coverage/ && bundle exec ruby -Itest -Ilib test/server_test.rb -n /coverage/`
+Run: `bundle exec ruby -Itest -Ilib test/graph_test.rb; bundle exec ruby -Itest -Ilib test/policy_file_test.rb; bundle exec ruby -Itest -Ilib test/cli_test.rb -n /association_counts/; bundle exec ruby -Itest -Ilib test/smoke_test.rb -n /coverage/; bundle exec ruby -Itest -Ilib test/server_test.rb -n /coverage/`
 Expected: the graph tests fail on the missing overlay keys and `Graph.coverage_line`; the cutoffs test gets no exception; the CLI test finds the warning line at index 3; smoke has no coverage line; the server test times out.
 
 - [ ] **Step 3: Validate the cutoffs.** In `lib/uml/viewer/policy_file.rb`, in `validate`, before `policy` is returned, add:
@@ -885,12 +1019,12 @@ git commit -m "feat: add the coverage overlay to the graph, rescan on a new cove
 **Interfaces:**
 - Consumes: view nodes with `grade`, `c_grade`, `m_grade`; classes with `crap`, `mutation`, `coverage_notes`, and ops with `coverage` and `crap` (Task 4); `graph.summary.coverage.banner`.
 - Produces (DOM contract):
-  - Every `g.box` of type class, namespace or folder has `data-grade` (the grade, or an empty string) and its `rect` filled by grade: a hue from red (grade 1) to green (grade 10), neutral `var(--box)` with no grade.
-  - Two `circle.dot` per such box: `circle.dot.c` and `circle.dot.m`, each with `data-grade`, grey (`var(--muted)`) with no grade.
+  - Every `g.box` of type class, namespace or folder has `data-grade` (the grade, or an empty string) and its `rect` filled by grade through its `style` attribute: `hsl(<hue>, 55%, var(--grade-l))` with hue 0 for grade 1 up to 120 for grade 10, `var(--box)` with no grade.
+  - Two `circle.dot` per such box: `circle.dot.c` and `circle.dot.m`, each with `data-grade`, grey (`var(--muted)`) with no grade, in a 10 px strip at the bottom of the box (boxes grow by 10 px), clear of the level text.
   - The card shows `C grade N (mu X.X, sigma X.X)` or `C grade: no data`, `M grade N (score P%)` or `M grade: no data`, one `p.note.coverage` per coverage note, and each op as `<sign> <name>  cc N  cov P%  crap X.X` when the op has coverage (unchanged `<sign> <name>  cc N` without).
   - The banner shows `graph.summary.coverage.banner` when no other banner applies.
 
-- [ ] **Step 1: Write the failing tests.** Add to `test/browser_test.rb` (helper first):
+- [ ] **Step 1: Write the failing tests.** Insert the four tests into `test/browser_test.rb` above its `private` line (tests below `private` never run). Put the helper `boot_coverage_project` below `private`, next to the other boot helpers:
 
 ```ruby
       def boot_coverage_project(resultset: :valid)
@@ -940,6 +1074,23 @@ git commit -m "feat: add the coverage overlay to the graph, rescan on a new cove
         assert_includes @browser.css("#card p.note.coverage").map(&:text), "no coverage: run your tests with SimpleCov"
       end
 
+      def test_a_never_loaded_class_is_a_red_node_and_its_dots_sit_below_the_level_text
+        boot_coverage_project
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="folder:services"] text.title')
+        node = wait_for('g.box.class[data-id="Pricing"]')
+        assert_equal "1", node.attribute("data-grade")
+        assert_includes @browser.at_css('g.box.class[data-id="Pricing"] rect').attribute("style"), "hsl(0,"
+        clear = @browser.evaluate(<<~JS)
+          (() => {
+            const level = document.querySelector('g.box.class[data-id="Pricing"] text.level').getBBox();
+            const dot = document.querySelector('g.box.class[data-id="Pricing"] circle.dot.m').getBBox();
+            return dot.y >= level.y + level.height;
+          })()
+        JS
+        assert clear, "the M dot overlaps the level text"
+      end
+
       def test_an_unreadable_coverage_file_shows_the_banner
         boot_coverage_project(resultset: :broken)
         @browser.goto(@server.url)
@@ -949,8 +1100,8 @@ git commit -m "feat: add the coverage overlay to the graph, rescan on a new cove
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bundle exec ruby -Itest -Ilib test/browser_test.rb -n /coverage|grade|never_loaded/`
-Expected: 4 failures: no `data-grade`, no dots, no metrics on the card, no coverage banner.
+Run: `bundle exec ruby -Itest -Ilib test/browser_test.rb -n '/coverage|grade|never_loaded/'`
+Expected: 5 failures: no `data-grade`, no dots, no metrics on the card, no red class node, no coverage banner.
 
 - [ ] **Step 3: Add the color tokens.** In `lib/uml/viewer/web/index.html`, add `--grade-l: 86%;` to the light `:root` and `--grade-l: 30%;` to the dark `:root`, and add this rule before `</style>`:
 
@@ -975,7 +1126,7 @@ Expected: 4 failures: no `data-grade`, no dots, no metrics on the card, no cover
     group.setAttribute("data-grade", hasGrade(node.grade) ? node.grade : "");
     el("rect", { width: placed.width, height: placed.height, rx: 4, style: `fill: ${boxFill(node.grade)}` }, group);
     [["c", node.c_grade], ["m", node.m_grade]].forEach(([kind, grade], index) => {
-      el("circle", { class: `dot ${kind}`, cx: placed.width - 26 + 12 * index, cy: placed.height - 9, r: 4, "data-grade": hasGrade(grade) ? grade : "", style: `fill: ${dotFill(grade)}` }, group);
+      el("circle", { class: `dot ${kind}`, cx: placed.width - 26 + 12 * index, cy: placed.height - 8, r: 4, "data-grade": hasGrade(grade) ? grade : "", style: `fill: ${dotFill(grade)}` }, group);
     });
 ```
 
@@ -994,7 +1145,9 @@ Expected: 4 failures: no `data-grade`, no dots, no metrics on the card, no cover
     (entry.coverage_notes || []).forEach((note) => append(card, "p", note, "note coverage"));
 ```
 
-  5. In `openCard`, change the op text to:
+  5. In `sized`, change the height from `30 + LINE * lines.length` to `40 + LINE * lines.length`, so every box has a 10 px strip at the bottom for the dots, clear of the level text and the member lines.
+
+  6. In `openCard`, change the op text to:
 
 ```js
       const metrics = hasGrade(op.coverage) ? `  cov ${Math.round(op.coverage * 100)}%  crap ${op.crap.toFixed(1)}` : "";
