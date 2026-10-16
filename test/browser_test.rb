@@ -99,6 +99,20 @@ module Uml
         JS
       end
 
+      def delay_graph_fetches(milliseconds)
+        @browser.evaluate(<<~JS)
+          (() => {
+            window.graphFetches = 0;
+            const original = window.fetch;
+            window.fetch = (url, ...rest) => {
+              if (!String(url).includes("/graph.json")) return original(url, ...rest);
+              window.graphFetches += 1;
+              return new Promise((resolve) => setTimeout(resolve, #{milliseconds})).then(() => original(url, ...rest));
+            };
+          })()
+        JS
+      end
+
       def test_first_screen_shows_kind_and_namespace_boxes_and_a_red_arrow
         @browser.goto(@server.url)
         wait_for('g.box[data-id="folder:models"]')
@@ -349,6 +363,20 @@ module Uml
         wait_until(-> { "the changed graph never started a layout" }) { @browser.evaluate("window.layouts").positive? }
         double_click('g.box[data-id="Reports"] text.title')
         wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def test_a_view_opened_while_the_graph_is_fetched_shows_the_new_graph_when_the_fetch_ends
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="Reports"]')
+        slow_down_layouts(1500)
+        delay_graph_fetches(800)
+        File.write(File.join(@workspace.root, "app/services/reports/late.rb"), "module Reports\n  class Late\n  end\nend\n")
+        Graph.build(@workspace)
+        wait_until(-> { "the changed graph was never fetched" }) { @browser.evaluate("window.graphFetches").positive? }
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        wait_for('g.box.class[data-id="Reports::Late"]')
         assert_equal ["rails_shapes", "Reports"], crumbs
       end
 
