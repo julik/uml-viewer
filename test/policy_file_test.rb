@@ -121,10 +121,17 @@ module Uml
       end
 
       def test_crap_cutoffs_must_be_nine_rising_numbers
-        ["crap_cutoffs: [5, 10]\n", "crap_cutoffs: [5, 10, 15, 20, 30, 40, 60, 80, 70]\n", "crap_cutoffs: [a, 10, 15, 20, 30, 40, 60, 80, 120]\n"].each do |text|
-          error = assert_raises(PolicyFile::Invalid, text) { PolicyFile.load(write(text)) }
-          assert_equal "policy.yml: crap_cutoffs must be 9 numbers in rising order", error.message
-        end
+        message = "policy.yml: crap_cutoffs must be 9 numbers in rising order"
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("crap_cutoffs: [5, 10]\n")) }
+        assert_equal message, error.message
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("crap_cutoffs: [5, 10, 15, 20, 30, 40, 60, 80, 70]\n")) }
+        assert_equal message, error.message
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("crap_cutoffs: [a, 10, 15, 20, 30, 40, 60, 80, 120]\n")) }
+        assert_equal message, error.message
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("crap_cutoffs: [5, 5, 15, 20, 30, 40, 60, 80, 120]\n")) }
+        assert_equal message, error.message
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("crap_cutoffs: [5, 10, 15, 20, 30, 40, 60, 80, 120, 200]\n")) }
+        assert_equal message, error.message
         assert_equal [1, 2, 3, 4, 5, 6, 7, 8, 9], PolicyFile.load(write("crap_cutoffs: [1, 2, 3, 4, 5, 6, 7, 8, 9]\n"))["crap_cutoffs"]
       end
     end
