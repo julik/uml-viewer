@@ -368,6 +368,10 @@ Level   Folder kinds
 - **Coverage time.** The coverage time is the newest `timestamp` key of the suites inside the resultset. The mtime of `.resultset.json` is never used, so a copy or a `touch` of the file changes nothing.
 - **File absent from the resultset.** When a resultset exists and its coverage time is not older than the file, but the file is not in it, the file was never loaded by the tests. Its methods have coverage 0.
 - **Partial run.** When the resultset holds fewer than half of the scanned files, a single test file probably ran. Then absent files get no coverage data (grey, not 0), and the page shows the banner "coverage looks partial: N of M files; run the full suite". The resultset of the legacy app holds about three quarters of its scanned files.
+- **Unreadable file.** A coverage file that is not valid JSON, or has the wrong shape, is ignored: every C dot is grey, and the banner and the card say "coverage file unreadable: <path>". The graph is still written.
+- In a partial run, the card of a class with an absent file says "coverage looks partial: run the full suite".
+- Paths match through the project root: the root is the prefix that most result paths share with a scanned file, and only `root/<scanned file>` counts. A path of an engine or a vendored gem with the same tail is dropped.
+- A suite without a numeric `timestamp`, or a line entry that is not an array of integers and nils, makes the file unreadable.
 - **Stale coverage.** When a scanned file's mtime is later than the coverage time, the method coverage of that file is not used. The C dot is grey, and the class card says "coverage older than this file".
 
 ### 6.2 CRAP and grade
@@ -377,6 +381,10 @@ Level   Folder kinds
 - Per class: μ and σ of the CRAP of its methods. Per box: μ and σ over all methods under the box, one weight per method.
 - Grade: `μ + σ` mapped through `crap_cutoffs` to 1..10. A class with no CRAP for any method (no resultset, or a stale file) has no C grade: the C dot is grey. Complexity alone never gives a C grade, because it would show an untested class as green. The card always shows `cc`.
 - Mutation: an optional snapshot `mutation.json` in the project's state folder, `{ "Class#method": {killed, survived, uncovered} }`, with the key `Class.method` for `def self.x`. A score is `killed / (killed + survived + uncovered)`, and the grade is `max(1, ceil(score × 10))`. Without a snapshot, the M dot is grey.
+- Sigma is the population standard deviation: divide by the number of methods.
+- The M grade of a class or a box comes from the summed counts of its methods. The op `self.x` matches the key `Class.x`, other ops `Class#x`. A key for a method that no longer exists is ignored. A snapshot that is not valid JSON, or not a mapping of mappings, gives the scan warning "mutation snapshot unreadable: <path>" and no M grades.
+- A class node has the same grades as a box: the C grade, the M grade and their mean.
+- A class whose methods with coverage data all have coverage 0 gets C grade 1, whatever its CRAP: a class with no tested method is red. Box grades still pool the CRAP of all methods under the box.
 - Box color: the mean of the C grade and the M grade that exist. With neither, the box is neutral grey.
 
 ### 6.3 Real example (first test of the overlay)
@@ -413,7 +421,7 @@ POST /scans                rescan now (the Regen button); 202
   - A body over 4 KB gets 413. When the queue holds 100 commands, a new one gets 429, and the page shows "queue full: start Claude or clear the queue".
   - The state folder is created with mode 0700, and every file in it with mode 0600, because `server.json` holds the token.
 - `/source` refuses any path that is not a scanned file (no path traversal).
-- **Rescans.** The server rescans in a background thread when the Regen button posts `/scans`, when `policy.yml` changes, or when a scanned file or a new `*.rb` file under the source roots changes. It checks mtimes every 2 seconds (about 1100 `stat` calls for the large app). One rescan worker thread does all rescans. A trigger only sets a dirty flag. The worker loops while the flag is set: it clears the flag, scans, and writes. So a trigger during a scan gives exactly one more scan, and the last graph written always comes from the latest inputs. A rescan writes the graph with an atomic rename. A rescan that fails keeps the last good graph and puts the error in `/version`. No agent is needed for any of this.
+- **Rescans.** The server rescans in a background thread when the Regen button posts `/scans`, when `policy.yml` changes, when a scanned file or a new `*.rb` file under the source roots changes, or when `coverage/.resultset.json` or the state folder's `mutation.json` changes. It checks mtimes every 2 seconds (about 1100 `stat` calls for the large app). One rescan worker thread does all rescans. A trigger only sets a dirty flag. The worker loops while the flag is set: it clears the flag, scans, and writes. So a trigger during a scan gives exactly one more scan, and the last graph written always comes from the latest inputs. A rescan writes the graph with an atomic rename. A rescan that fails keeps the last good graph and puts the error in `/version`. No agent is needed for any of this.
 - The server stops on Ctrl-C. It removes `server.json` on exit.
 - When `server.json` exists with a live pid, a second `uml-viewer` for the same project opens the browser on the running server and exits.
 
@@ -527,6 +535,10 @@ association is polymorphic               no edge                                
 file absent from the resultset           coverage 0                                 red C grade; card: "not loaded by the tests"     overlay_test: absent file
 resultset from a partial run             absent files get no data                   grey C dots; banner: "coverage looks partial:     overlay_test: partial run
                                                                                     N of M files; run the full suite"
+mutation snapshot unreadable             no M grades                                scan summary warning: "mutation snapshot         graph_test: broken snapshot
+                                                                                    unreadable: <path>"
+crap_cutoffs not 9 rising numbers        scan refuses, keeps the old graph          "policy.yml: crap_cutoffs must be 9 numbers in   policy_file_test
+                                                                                    rising order"
 policy names a level folder that         ignored                                    scan summary warning: "levels: unknown folder    policy_test: unknown folder
 does not exist                                                                      <name>"
 port in use                              next free port                             the URL printed on start                         server_test: busy port
