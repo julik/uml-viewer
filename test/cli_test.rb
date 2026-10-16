@@ -60,6 +60,19 @@ module Uml
         assert File.exist?(Workspace.new(@project).path("graph.json"))
       end
 
+      def test_scan_prints_the_association_counts_and_each_warning
+        File.write(File.join(@project, "app/models/ghost_owner.rb"), "class GhostOwner\n  has_many :ghosts\n  belongs_to :owner, polymorphic: true\nend\n")
+        run_cli("init", @project)
+        workspace = Workspace.new(@project)
+        workspace.write_atomic("policy.yml", File.read(workspace.path("policy.yml")).sub("levels:\n", "levels:\n- - workers\n"))
+        status, out, = run_cli("scan", @project)
+        lines = out.lines(chomp: true)
+        assert_equal 0, status
+        assert_equal "1 unresolved associations, 1 polymorphic associations (no target)", lines[1]
+        assert_match(/\Aunlisted foreign: /, lines[2])
+        assert_equal ["warning: levels: unknown folder workers"], lines.drop(3)
+      end
+
       def test_scan_with_a_broken_policy_prints_the_line_and_returns_1
         run_cli("init", @project)
         Workspace.new(@project).write_atomic("policy.yml", "levels: [\n")

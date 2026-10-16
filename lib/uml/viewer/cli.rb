@@ -48,10 +48,13 @@ module Uml
       def run_scan
         Graph.prepare(workspace)
         graph = Graph.build(workspace)
+        summary = graph["summary"]
         violating = graph["edges"].count { |edge| edge["violating"] }
         @out.puts "#{graph['classes'].size} classes, #{graph['edges'].size} edges, #{violating} violating, " \
-                  "skipped #{graph['summary']['skipped'].size} files, no constant"
-        @out.puts "unlisted foreign: #{graph['summary']['foreign'].map { |name, count| "#{name} (#{count})" }.join(', ')}"
+                  "skipped #{summary['skipped'].size} files, no constant"
+        @out.puts "#{summary['unresolved']} unresolved associations, #{summary['polymorphic']} polymorphic associations (no target)"
+        @out.puts "unlisted foreign: #{summary['foreign'].map { |name, count| "#{name} (#{count})" }.join(', ')}"
+        summary["warnings"].each { |warning| @out.puts "warning: #{warning}" }
         0
       end
 
