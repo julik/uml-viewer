@@ -39,6 +39,15 @@ module Uml
         assert_equal [["Payments", "Payments::Gateway"]], views["Payments"]["arrows"].map { |arrow| arrow.values_at("from", "to") }
       end
 
+      def test_a_class_that_is_a_prefix_of_another_class_and_not_a_scanned_namespace_keeps_both_nodes
+        views = Views.build([entry("Reports::Summary", "services", 1), entry("Reports::Summary::Row", "services", 1)], ["Reports"],
+                            [edge("Reports::Summary::Row", "Reports::Summary")], [])
+        assert_equal [["Reports::Summary", "namespace"]], views["Reports"]["nodes"].map { |node| node.values_at("id", "type") }
+        assert_equal [["Reports::Summary", "class"], ["Reports::Summary::Row", "class"]],
+                     views["Reports::Summary"]["nodes"].map { |node| node.values_at("id", "type") }
+        views.each_value { |view| view["arrows"].each { |arrow| refute_equal arrow["from"], arrow["to"] } }
+      end
+
       def test_a_top_level_class_sits_in_its_kind_box_view
         views = Views.build([entry("Order", "models", 0)], [], [], [])
         assert_equal [["folder:models", "folder", "models"]], views["root"]["nodes"].map { |node| node.values_at("id", "type", "label") }

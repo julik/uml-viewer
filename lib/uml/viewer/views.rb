@@ -4,7 +4,11 @@ module Uml
   module Viewer
     module Views
       def self.build(classes, namespaces, edges, foreign_edges)
-        known = namespaces.to_set
+        prefixes = classes.flat_map do |entry|
+          segments = entry["id"].split("::")
+          (1...segments.size).map { |count| segments.first(count).join("::") }
+        end
+        known = (namespaces + prefixes).to_set
         paths = classes.to_h { |entry| [entry["id"], path(entry, known)] }
         views = { "root" => view("root", nil, nil) }
         classes.each { |entry| place(views, paths[entry["id"]], entry) }
