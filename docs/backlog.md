@@ -1,4 +1,4 @@
-# Backlog after milestone 2
+# Backlog after milestone 3
 
 The reviews of milestone 1 found these items. None of them blocks the 5b gate or loses data. Fold each item into the plan of the milestone that touches its code, and remove it here when it is fixed.
 
@@ -6,7 +6,6 @@ The reviews of milestone 1 found these items. None of them blocks the 5b gate or
 
   - No command clears the queue.
   - The last failed command stays on the page, also after `failed.json` is deleted.
-  - `crap_cutoffs` is not validated.
   - `watch` prints "1 commands waiting". A corrupt `to-agent.json` stops `watch` with a backtrace.
   - `install-skill` gives no warning when the executable is a version-manager shim or a binstub. With rbenv, the bare `uml-viewer` command fails in a folder with a different Ruby version.
   - An executable path with a space or a ")" breaks the allowed-tools rules and the backticks in the skill.
