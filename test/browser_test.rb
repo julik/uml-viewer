@@ -583,6 +583,21 @@ module Uml
         wait_for_text("#banner", "coverage file unreadable:")
       end
 
+      def test_the_dots_sit_below_the_last_member_line
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"] text.member')
+        clear = @browser.evaluate(<<~JS)
+          (() => {
+            const box = document.querySelector('g.box[data-id="folder:models"]');
+            const members = box.querySelectorAll("text.member");
+            const last = members[members.length - 1].getBBox();
+            const dot = box.querySelector("circle.dot.m").getBBox();
+            return dot.y >= last.y + last.height;
+          })()
+        JS
+        assert clear, "the M dot overlaps the last member line"
+      end
+
       private
 
       def boot_coverage_project(resultset: :valid)
