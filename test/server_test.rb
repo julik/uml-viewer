@@ -92,9 +92,38 @@ module Uml
       end
 
       def test_source_of_a_file_deleted_since_the_scan_gets_404_with_the_file
-        File.delete(File.join(@project, "app/models/user.rb"))
-        response = request(:get, "/source?file=app/models/user.rb&line=1")
+        project = project_copy
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        Graph.build(workspace)
+        slow = Server.new(workspace, poll: 60).start
+        thread = Thread.new { slow.run }
+        File.delete(File.join(project, "app/models/user.rb"))
+        http = Net::HTTP.new("127.0.0.1", slow.port)
+        req = Net::HTTP::Get.new("/source?file=app/models/user.rb&line=1")
+        req["Host"] = "127.0.0.1:#{slow.port}"
+        req["X-UML-Token"] = slow.token
+        response = http.request(req)
         assert_equal ["404", "file gone: app/models/user.rb"], [response.code, JSON.parse(response.body)["error"]]
+      ensure
+        slow&.shutdown
+        thread&.join(2)
+      end
+
+      def test_shutdown_does_not_wait_for_the_poll_interval
+        project = project_copy
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        Graph.build(workspace)
+        slow = Server.new(workspace, poll: 5).start
+        thread = Thread.new { slow.run }
+        sleep 0.3
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        slow.shutdown
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        assert_operator elapsed, :<, 1
+      ensure
+        thread&.join(2)
       end
 
       def test_session_starts_empty_and_returns_what_was_stored_with_mode_0600

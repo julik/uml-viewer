@@ -21,6 +21,7 @@ module Uml
         @token = token
         @poll = poll
         @mailbox = Mailbox.new(workspace)
+        @wakeup = Queue.new
         @rescanner = Rescanner.new(scan: lambda {
           Graph.prepare(workspace)
           Graph.build(workspace)
@@ -33,11 +34,11 @@ module Uml
         servlet = WEBrick::HTTPServlet::ProcHandler.new(method(:route))
         def servlet.service(req, res) = @proc.call(req, res)
         @http.mount("/", servlet)
-        @workspace.write_atomic("server.json", JSON.generate("port" => port, "pid" => Process.pid,
-                                                             "started_at" => Time.now.utc.iso8601, "token" => @token))
         @rescanner.start
         baseline = read_inputs || {}
         @watcher = Thread.new { watch_inputs(baseline) }
+        @workspace.write_atomic("server.json", JSON.generate("port" => port, "pid" => Process.pid,
+                                                             "started_at" => Time.now.utc.iso8601, "token" => @token))
         self
       end
 
@@ -55,6 +56,7 @@ module Uml
 
       def shutdown
         @stopping = true
+        @wakeup << true
         @watcher&.join(@poll + 1)
         @rescanner.stop
         @http&.shutdown
@@ -190,7 +192,8 @@ module Uml
 
       def watch_inputs(last)
         until @stopping
-          sleep @poll
+          break if @wakeup.pop(timeout: @poll)
+
           current = read_inputs
           next if current.nil? || current == last
 
@@ -203,7 +206,7 @@ module Uml
         inputs = Graph.inputs(@workspace)
         @watch_error = nil
         inputs
-      rescue SystemCallError => error
+      rescue StandardError => error
         @watch_error = "cannot watch the project: #{error.message}"
         nil
       end
