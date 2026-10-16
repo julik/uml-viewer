@@ -172,6 +172,12 @@ module Uml
         assert_equal 9, Graph.build(workspace)["classes"].find { |entry| entry["id"] == "Pricing" }["mutation"]["grade"]
         workspace.write_atomic("mutation.json", "[1, 2]")
         assert_includes Graph.build(workspace)["summary"]["warnings"], "mutation snapshot unreadable: #{workspace.path('mutation.json')}"
+        [{ "killed" => [] }, { "killed" => true }, { "killed" => 5, "survived" => -3 }].each do |counts|
+          workspace.write_atomic("mutation.json", JSON.generate("Pricing#initialize" => counts))
+          graph = Graph.build(workspace)
+          assert_includes graph["summary"]["warnings"], "mutation snapshot unreadable: #{workspace.path('mutation.json')}", counts.inspect
+          assert_nil graph["classes"].find { |entry| entry["id"] == "Pricing" }["mutation"], counts.inspect
+        end
       end
 
       def test_the_coverage_line_names_the_files_and_the_time

@@ -50,9 +50,15 @@ module Uml
         return [nil, nil] unless File.exist?(path)
 
         data = JSON.parse(File.read(path))
-        data.is_a?(Hash) && data.values.all?(Hash) ? [data, nil] : [nil, "mutation snapshot unreadable: #{path}"]
+        mutation_snapshot?(data) ? [data, nil] : [nil, "mutation snapshot unreadable: #{path}"]
       rescue JSON::ParserError, SystemCallError
         [nil, "mutation snapshot unreadable: #{path}"]
+      end
+
+      def self.mutation_snapshot?(data)
+        data.is_a?(Hash) && data.values.all? do |entry|
+          entry.is_a?(Hash) && Overlay::COUNTS.all? { |key| !entry.key?(key) || (entry[key].is_a?(Integer) && entry[key] >= 0) }
+        end
       end
 
       def self.coverage_line(coverage)
