@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete the scanner (ops with cc, edge kinds, associations, ActiveAdmin), and let the user drill down from the first screen to a class card and its source lines, with rescans on every source change.
+**Goal:** Complete the scanner (ops with cc, edge kinds, associations), and let the user drill down from the first screen to a class card and its source lines, with rescans on every source change.
 
 **Architecture:** The Scanner adds `ops`, edge `kinds` and foreign edges to its output. The pure Policy computes the violating flag from the kinds, and a new pure `Views` unit builds one view per open box (its child boxes, its classes and the collapsed arrows between them), so the page only draws. The server adds `/source` and `/session`, serves the page without a token, and polls every source file for changes.
 
@@ -45,13 +45,14 @@ These are rulings, recorded here so a reviewer can reject them.
 - **A box without a level** (its folder is in no row of `levels:`) is drawn in the partition above the highest level, out of the way. Milestone 1 drew it at the bottom as if it were level 0.
 - **Singularize.** For `has_many` and `has_and_belongs_to_many`, the target is singularized also when it comes from `source:`. A singular `source:` that ends in `s` (`source: :address`) then loses its `s`. Accepted: rare, and the edge drops as unresolved, which the summary counts.
 - **Source polling** stats every `*.rb` file under the source roots every 2 seconds, also files in skipped folders. A change there gives one harmless rescan.
+- **ActiveAdmin is deferred.** The user took the `ActiveAdmin(X)` pseudo-classes (spec 4.2) out of milestone 2 on 2026-10-16. An `ActiveAdmin.register` file stays "skipped, no constant" in the scan summary. Task 1 records this in the spec.
 - **Backlog items folded in:** reload shows raw JSON; an invalid `edge_kinds` value and a non-text `title` give no message; a network failure in the refresh says "Failed to fetch"; the context menu and the arrow hover target; a box with a null level; smoke prints only the count, skips the git check when the scan raises, passes a non-git path silently, crashes on an empty `expect.yml`, has a loose name regex and no wrong-kind or two-project test; reopened classes keep only the first file's parse errors; a `skip:` entry with a trailing slash; `Foo::BAR = 1`; `main_constant` computed twice; omitted namespaces kept in the graph; `kept` and `by_id`; the resolver guard and its untested cases; the PolicyFile line-number test; the policy test gaps; `Commands` does not check the kind against the id; the policy poll thread is never joined and dies silently; the dead `sessionStorage` fallback. Every other backlog item stays for a later milestone.
 
 ## Review Focus
 
-1. `ActiveAdmin.register Shop::Customer`: the pseudo-class id holds `::`, so code that splits ids on `::` would put it in a `Shop` box and label it `Customer)`. Expected: it sits in the `admin` kind box with its full id as label, and `omit: [folder:admin]` removes it. Tests in Task 5 (Policy, browser) and Task 7 (Views).
-2. A source file is deleted between the glob and the `stat` of the input poll (or is a dangling symlink). Expected: no exception, the poll thread keeps running, the next poll sees the change and rescans. Test in Task 9 (`Graph.inputs` with a dangling symlink).
-3. `session.json` names a view that no longer exists (the namespace was omitted or renamed). Expected: the page opens the nearest view on the saved path that still exists, not a blank screen. Test in Task 10.
+1. A project with no class left (an empty `app/`, or every class omitted). Expected: the root view is empty, the page draws an empty diagram with the title crumb, and nothing raises. Tests in Task 6 (`Views` with no classes) and Task 9 (the first screen of an empty project).
+2. A source file is deleted between the glob and the `stat` of the input poll (or is a dangling symlink). Expected: no exception, the poll thread keeps running, the next poll sees the change and rescans. Test in Task 8 (`Graph.inputs` with a dangling symlink).
+3. `session.json` names a view that no longer exists (the namespace was omitted or renamed). Expected: the page opens the nearest view on the saved path that still exists, not a blank screen. Test in Task 9.
 4. A reopened class across two files. Expected: the ops of both files, each with its own `file`, so the source panel opens the right file; the card lists both files; a parse error in the second file shows with that file's path. Test in Task 3.
 5. `class_name: "::User"` inside a compact model whose namespace also has a `User`. Expected: the leading `::` forces the top-level `User`. Test in Task 4.
 
@@ -60,25 +61,25 @@ These are rulings, recorded here so a reviewer can reject them.
 ```
 Failure                                  Handling                                  User sees                                         Test
 -------                                  --------                                  ---------                                         ----
-/source for a file outside the graph     403                                       source panel: "not a scanned file"                server_test, browser_test (Task 9, 11)
-/source for a file deleted since scan    404                                       source panel: "file gone: <file>"                 server_test (Task 9)
-PUT /session with a bad body             400 with the reason                       nothing (the page sends only valid bodies)        server_test (Task 9)
-session.json names a missing view        nearest existing view on the path         that view                                         browser_test (Task 10)
-graph.json fetch fails on the network    keep the last drawing                     banner: "server not reachable"                    browser_test (Task 10)
-input poll cannot read the project       keep polling; error in /version           banner: "cannot watch the project: <reason>;      server_test (Task 9)
+/source for a file outside the graph     403                                       source panel: "not a scanned file"                server_test, browser_test (Task 8, 11)
+/source for a file deleted since scan    404                                       source panel: "file gone: <file>"                 server_test (Task 8)
+PUT /session with a bad body             400 with the reason                       nothing (the page sends only valid bodies)        server_test (Task 8)
+session.json names a missing view        nearest existing view on the path         that view                                         browser_test (Task 9)
+graph.json fetch fails on the network    keep the last drawing                     banner: "server not reachable"                    browser_test (Task 9)
+input poll cannot read the project       keep polling; error in /version           banner: "cannot watch the project: <reason>;      server_test (Task 8)
                                                                                    showing last good graph"
-edge_kinds value or key is invalid       scan refuses, keeps the old graph         CLI error and banner with the edge_kinds rule     policy_file_test (Task 6)
-title is not text                        scan refuses, keeps the old graph         "policy.yml: title must be text"                  policy_file_test (Task 6)
-levels names an unknown folder           folder ignored                            scan: "warning: levels: unknown folder <name>"    cli_test (Task 8)
-unresolved or polymorphic association    no edge, counted                          scan: "N unresolved associations, N polymorphic   cli_test (Task 8)
+edge_kinds value or key is invalid       scan refuses, keeps the old graph         CLI error and banner with the edge_kinds rule     policy_file_test (Task 5)
+title is not text                        scan refuses, keeps the old graph         "policy.yml: title must be text"                  policy_file_test (Task 5)
+levels names an unknown folder           folder ignored                            scan: "warning: levels: unknown folder <name>"    cli_test (Task 7)
+unresolved or polymorphic association    no edge, counted                          scan: "N unresolved associations, N polymorphic   cli_test (Task 7)
                                                                                    associations (no target)"
-double-click on a class that left the    no card                                   toast: "class <id> is not in the graph"           browser_test (Task 11)
+double-click on a class that left the    no card                                   toast: "class <id> is not in the graph"           browser_test (Task 10)
 graph
-Regen while the server is gone           no rescan                                 toast: "rescan not started: server not            browser_test (Task 11)
+Regen while the server is gone           no rescan                                 toast: "rescan not started: server not            browser_test (Task 10)
                                                                                    reachable"
-smoke on a folder that is not git        project fails                             "<name>: not a git repository, so smoke cannot    smoke_test (Task 8)
+smoke on a folder that is not git        project fails                             "<name>: not a git repository, so smoke cannot    smoke_test (Task 7)
                                                                                    check that git status stays the same"
-expect.yml is not a list                 project fails                             "<name>: expect.yml must be a list of edges"      smoke_test (Task 8)
+expect.yml is not a list                 project fails                             "<name>: expect.yml must be a list of edges"      smoke_test (Task 7)
 ```
 
 ## File structure
@@ -91,7 +92,7 @@ lib/uml/viewer/complexity.rb                 create    pure: cyclomatic complexi
 lib/uml/viewer/operations.rb                 create    ops of one parsed file: name, visibility, cc, lines
 lib/uml/viewer/inflector.rb                  create    pure: singularize and camelize for association names
 lib/uml/viewer/views.rb                      create    pure: one view per box, with nodes and collapsed arrows
-lib/uml/viewer/scanner.rb                    modify    ops, edge kinds, associations, ActiveAdmin, foreign edges
+lib/uml/viewer/scanner.rb                    modify    ops, edge kinds, associations, foreign edges
 lib/uml/viewer/resolver.rb                   modify    drop the redundant guard
 lib/uml/viewer/policy.rb                     modify    kinds-aware violating, foreign edges, warnings, views
 lib/uml/viewer/policy_file.rb                modify    validate edge_kinds and title
@@ -102,9 +103,9 @@ lib/uml/viewer/cli.rb                        modify    scan prints the associati
 lib/uml/viewer/smoke.rb                      modify    print violating edges; git and expect.yml checks
 lib/uml/viewer/web/index.html, app.js        modify    drill-down, crumbs, zoom, session, card, source, popup
 lib/uml/viewer.rb                            modify    require the new units
-test/fixtures/projects/rails_shapes/...      modify    Reports::Exporter (visibility), two ActiveAdmin files
+test/fixtures/projects/rails_shapes/...      modify    Reports::Exporter (visibility)
 test/*_test.rb                               modify    one test file per unit, plus new ones for new units
-docs/backlog.md, README.md                   modify    remove the fixed items, describe navigation (Task 12)
+docs/backlog.md, README.md                   modify    remove the fixed items, describe navigation (Task 11)
 ```
 
 ---
@@ -116,7 +117,7 @@ docs/backlog.md, README.md                   modify    remove the fixed items, d
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: the spec text that the reviewers of Tasks 2 to 12 check against.
+- Produces: the spec text that the reviewers of Tasks 2 to 11 check against.
 
 This task changes documentation only, so it has no test. Make each edit with the exact text below.
 
@@ -173,6 +174,8 @@ Keep the rest of that bullet (the CORS preflight and the 403) as it is.
 ```
 On 2026-10-15 the user chose to start milestone 2 before the 5b gate, because milestone 2 does not touch `watch`, the mailbox or the skill. 5b stays the exit gate of milestone 1, and a doorbell redesign stays in those units.
 ```
+
+In the milestone 2 bullet, change `(associations, ActiveAdmin, Data.define, reopened classes)` to `(associations, Data.define, reopened classes)`, and add at its end: `The ActiveAdmin pseudo-classes of section 4.2 move to a later milestone (user decision, 2026-10-16).`
 
 - [ ] **Step 7: Check and commit**
 
@@ -1139,7 +1142,7 @@ Run: `bundle exec ruby -Itest -Ilib test/inflector_test.rb && bundle exec ruby -
 Expected: all pass.
 
 Run: `bundle exec rake test`
-Expected: all pass. The policy tests build their own edges without `kinds`; Policy does not read `kinds` until Task 6.
+Expected: all pass. The policy tests build their own edges without `kinds`; Policy does not read `kinds` until Task 5.
 
 - [ ] **Step 7: Check that the tests can tell.** In `association_target`, delete the line with `Inflector.singularize`. Run `test/scanner_test.rb`. Expected: `test_association_shapes` fails on `Order -> Tag`. Restore it.
 
@@ -1152,177 +1155,7 @@ git commit -m "feat: scan inheritance, implements and association edges, count u
 
 ---
 
-### Task 5: ActiveAdmin pseudo-classes
-
-**Files:**
-- Create: `test/fixtures/projects/rails_shapes/app/admin/orders.rb`, `test/fixtures/projects/rails_shapes/app/admin/customers.rb`
-- Modify: `lib/uml/viewer/scanner.rb`, `lib/uml/viewer/policy.rb`, `lib/uml/viewer/web/app.js`
-- Test: `test/scanner_test.rb`, `test/policy_test.rb`, `test/browser_test.rb`
-
-**Interfaces:**
-- Consumes: the scan of Task 4.
-- Produces:
-  - A file with a top-level `ActiveAdmin.register X` (with or without `as:`) declares the class `ActiveAdmin(X)`, with `kind_folder` `admin` and `stereotype` `admin`. Its `dependency` edge to `X` comes from the normal reference scan. Two files that register the same `X` are one reopened class.
-  - `Policy.segments(entry) -> [String]`: `[entry["id"]]` for an admin class, else `entry["id"].split("::")`. Later tasks place classes with it.
-  - Each box member is `{"id", "type", "label"}`; `label` is the last segment, or the full id for an admin class. The page shows `label`.
-
-- [ ] **Step 1: Write the fixture files**
-
-`test/fixtures/projects/rails_shapes/app/admin/orders.rb`:
-
-```ruby
-ActiveAdmin.register Order do
-  permit_params :state
-end
-```
-
-`test/fixtures/projects/rails_shapes/app/admin/customers.rb`:
-
-```ruby
-ActiveAdmin.register Shop::Customer, as: "Client" do
-  index { Pricing }
-end
-```
-
-- [ ] **Step 2: Write the failing tests.** Add to `test/scanner_test.rb`:
-
-```ruby
-      def test_an_active_admin_register_block_is_an_admin_pseudo_class_with_a_dependency_on_its_model
-        admin = klass("ActiveAdmin(Order)")
-        assert_equal ["admin", "admin", "app/admin/orders.rb"], admin.values_at("kind_folder", "stereotype", "file")
-        assert_equal ["dependency"], found_edge("ActiveAdmin(Order)", "Order")["kinds"]
-      end
-
-      def test_an_active_admin_block_with_as_and_a_namespaced_model_keeps_the_model_name_in_its_id
-        assert klass("ActiveAdmin(Shop::Customer)")
-        assert edge?("ActiveAdmin(Shop::Customer)", "Shop::Customer")
-        assert edge?("ActiveAdmin(Shop::Customer)", "Pricing")
-      end
-
-      def test_an_active_admin_page_without_a_model_is_skipped
-        root = project("app/admin/dashboard.rb" => "ActiveAdmin.register_page \"Dashboard\" do\nend\n")
-        assert_equal ["app/admin/dashboard.rb"], Scanner.new(root).scan["skipped"]
-      end
-```
-
-Add to `test/policy_test.rb`. First extend the `scan` helper so a class can carry a stereotype: change the class mapping to
-
-```ruby
-          "classes" => classes.map { |id, folder| { "id" => id, "kind_folder" => folder, "file" => "x.rb", "files" => ["x.rb"], "stereotype" => id.start_with?("ActiveAdmin(") ? "admin" : "class", "ops" => [], "parse_errors" => [] } },
-```
-
-Then add:
-
-```ruby
-      def test_an_admin_class_with_a_namespaced_model_sits_in_the_admin_kind_box_with_its_full_id_as_label
-        graph = apply(scan({ "ActiveAdmin(Shop::Customer)" => "admin", "Shop::Customer" => "models" }, [], ["Shop"]))
-        box = graph["boxes"].find { |b| b["id"] == "folder:admin" }
-        assert_equal [{ "id" => "ActiveAdmin(Shop::Customer)", "type" => "class", "label" => "ActiveAdmin(Shop::Customer)" }], box["members"]
-        assert_equal ["Shop", "folder:admin"], graph["boxes"].map { |b| b["id"] }.sort
-      end
-
-      def test_omit_of_the_admin_kind_box_removes_an_admin_class_with_a_namespaced_model
-        graph = apply(scan({ "ActiveAdmin(Shop::Customer)" => "admin", "Shop::Customer" => "models" }, [], ["Shop"]), "omit" => ["folder:admin"])
-        assert_equal ["Shop::Customer"], graph["classes"].map { |c| c["id"] }
-      end
-```
-
-In the existing tests of `test/policy_test.rb` that compare `members`, add the label to each expected member: `{ "id" => "Billing::Counter", "type" => "class", "label" => "Counter" }`, `{ "id" => "Billing::Gateway", "type" => "namespace", "label" => "Gateway" }`, `{ "id" => "Payments", "type" => "class", "label" => "Payments" }`, `{ "id" => "Order", "type" => "class", "label" => "Order" }`.
-
-Add to `test/browser_test.rb`:
-
-```ruby
-      def test_the_admin_kind_box_lists_an_admin_class_by_its_full_id
-        @browser.goto(@server.url)
-        wait_for('g.box[data-id="folder:admin"]')
-        assert_equal "ActiveAdmin(Shop::Customer)", @browser.at_css('text.member[data-id="ActiveAdmin(Shop::Customer)"]').text
-      end
-```
-
-- [ ] **Step 3: Run the tests to verify they fail**
-
-Run: `bundle exec ruby -Itest -Ilib test/scanner_test.rb -n /active_admin/`
-Expected: 3 failures; the admin files are skipped (no constant), so `klass("ActiveAdmin(Order)")` is nil and `skipped` holds three files.
-
-Run: `bundle exec ruby -Itest -Ilib test/policy_test.rb`
-Expected: the admin test fails (the class sits in a `ActiveAdmin(Shop` box); the member tests fail on the missing `label`.
-
-- [ ] **Step 4: Declare the pseudo-class.** In `lib/uml/viewer/scanner.rb`:
-
-  1. In `Declarations#walk`, add a branch: `when Prism::CallNode then declare_admin(node)`.
-  2. Add to `Declarations` (private):
-
-```ruby
-        def declare_admin(node)
-          return unless node.receiver.is_a?(Prism::ConstantReadNode) && node.receiver.name == :ActiveAdmin && node.name == :register
-
-          model = Scanner.constant_name(node.arguments&.arguments&.first)
-          @declared << { id: "ActiveAdmin(#{model.delete_prefix('::')})", stereotype: "admin" } if model
-        end
-```
-
-  3. In `build_classes`, change `"kind_folder" => kind_folder(file)` to `"kind_folder" => main[:stereotype] == "admin" ? "admin" : kind_folder(file)`.
-
-- [ ] **Step 5: Place the admin class and label the members.** In `lib/uml/viewer/policy.rb`:
-
-  1. Add:
-
-```ruby
-      def self.segments(entry)
-        entry["stereotype"] == "admin" ? [entry["id"]] : entry["id"].split("::")
-      end
-
-      def self.label(entry)
-        segments(entry).last
-      end
-```
-
-  2. Replace `in_namespace_box?` and `box_id` with:
-
-```ruby
-      def self.in_namespace_box?(entry, namespaces)
-        segments(entry).size > 1 || namespaces.include?(entry["id"])
-      end
-
-      def self.box_id(entry, namespaces)
-        found = segments(entry)
-        return found.first if found.size > 1
-        return entry["id"] if namespaces.include?(entry["id"])
-
-        "folder:#{entry['kind_folder']}"
-      end
-```
-
-  3. In `apply`, change `!in_namespace_box?(entry["id"], namespaces)` to `!in_namespace_box?(entry, namespaces)`.
-  4. In `boxes`, change the member-class selection and the members:
-
-```ruby
-          member_classes = members.select { |entry| folder || entry["id"] == id || (segments(entry).size == 2 && !namespaces.include?(entry["id"])) }
-                                  .map { |entry| { "id" => entry["id"], "type" => "class", "label" => label(entry) } }
-          child_namespaces = folder ? [] : namespaces.select { |name| name.start_with?("#{id}::") && name.split("::").size == 2 }
-                                                     .map { |name| { "id" => name, "type" => "namespace", "label" => name.split("::").last } }
-```
-
-- [ ] **Step 6: Show the label on the page.** In `lib/uml/viewer/web/app.js`, in `boxLines`, change `shortName(member.id)` to `member.label`, and delete the now unused `shortName` constant.
-
-- [ ] **Step 7: Run the tests**
-
-Run: `bundle exec ruby -Itest -Ilib test/scanner_test.rb && bundle exec ruby -Itest -Ilib test/policy_test.rb && bundle exec ruby -Itest -Ilib test/browser_test.rb`
-Expected: all pass.
-
-Run: `bundle exec rake test`
-Expected: all pass.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add lib/uml/viewer/scanner.rb lib/uml/viewer/policy.rb lib/uml/viewer/web/app.js test/scanner_test.rb test/policy_test.rb test/browser_test.rb test/fixtures/projects/rails_shapes/app/admin
-git commit -m "feat: show each ActiveAdmin register block as an admin pseudo-class in the admin kind box"
-```
-
----
-
-### Task 6: Kinds in the policy, foreign edges, warnings and PolicyFile checks
+### Task 5: Kinds in the policy, foreign edges, warnings and PolicyFile checks
 
 **Files:**
 - Modify: `lib/uml/viewer/policy.rb`, `lib/uml/viewer/policy_file.rb`, `lib/uml/viewer/graph.rb`
@@ -1342,7 +1175,7 @@ git commit -m "feat: show each ActiveAdmin register block as an admin pseudo-cla
 ```ruby
       def scan(classes, edges, namespaces = [], foreign_edges: [])
         {
-          "classes" => classes.map { |id, folder| { "id" => id, "kind_folder" => folder, "file" => "x.rb", "files" => ["x.rb"], "stereotype" => id.start_with?("ActiveAdmin(") ? "admin" : "class", "ops" => [], "parse_errors" => [] } },
+          "classes" => classes.map { |id, folder| { "id" => id, "kind_folder" => folder, "file" => "x.rb", "files" => ["x.rb"], "stereotype" => "class", "ops" => [], "parse_errors" => [] } },
           "edges" => edges.map { |from, to, kinds = ["dependency"]| { "from" => from, "to" => to, "kind" => kinds.first, "kinds" => kinds } },
           "foreign_edges" => foreign_edges.map { |from, to| { "from" => from, "to" => to, "kind" => "dependency", "kinds" => ["dependency"] } },
           "namespaces" => namespaces
@@ -1491,7 +1324,7 @@ git commit -m "feat: flag a merged edge red when any non-association kind breaks
 
 ---
 
-### Task 7: Views, graph version 2 and command kinds
+### Task 6: Views, graph version 2 and command kinds
 
 **Files:**
 - Create: `lib/uml/viewer/views.rb`
@@ -1499,7 +1332,7 @@ git commit -m "feat: flag a merged edge red when any non-association kind breaks
 - Test: `test/views_test.rb`, `test/policy_test.rb`, `test/graph_test.rb`, `test/commands_test.rb`, `test/server_test.rb`
 
 **Interfaces:**
-- Consumes: `Policy.segments(entry)` (Task 5); `Policy.apply` output (Task 6).
+- Consumes: `Policy.apply` output (Task 5).
 - Produces:
   - `Uml::Viewer::Views.build(classes, namespaces, edges, foreign_edges) -> {view_id => view}`. View ids: `"root"`, each namespace id, each `"folder:<kind>"`. A view is `{"id", "label", "parent", "nodes", "arrows"}`; `parent` is `nil` for root.
   - A node is one of:
@@ -1561,13 +1394,6 @@ module Uml
         assert_equal ["Order"], ids(views["folder:models"])
       end
 
-      def test_an_admin_class_with_a_namespaced_model_stays_in_the_admin_kind_box
-        views = Views.build([entry("ActiveAdmin(Shop::Customer)", "admin", 3, stereotype: "admin"), entry("Shop::Customer", "models", 0)], ["Shop"], [], [])
-        assert_equal ["Shop", "folder:admin"], ids(views["root"])
-        assert_equal [["ActiveAdmin(Shop::Customer)", "ActiveAdmin(Shop::Customer)"]], views["folder:admin"]["nodes"].map { |node| node.values_at("id", "label") }
-        refute views.key?("ActiveAdmin(Shop")
-      end
-
       def test_a_foreign_edge_gives_an_oval_and_an_arrow_on_the_first_screen_only
         views = Views.build([entry("Billing::Client", "services", 1)], ["Billing"], [], [{ "from" => "Billing::Client", "to" => "Faraday", "kind" => "dependency" }])
         oval = views["root"]["nodes"].find { |node| node["id"] == "foreign:Faraday" }
@@ -1616,7 +1442,7 @@ Convert `test/policy_test.rb` to views. Add the helpers
       def root_arrows(graph) = graph["views"]["root"]["arrows"]
 ```
 
-and in every existing test replace `graph["boxes"]` with `root_nodes(graph)` and `graph["arrows"]` with `root_arrows(graph)`. A pair is now a hash, so compare pairs through `.map { |pair| pair.values_at("from", "to") }`. For example, `assert_equal [["Order", "Pricing"], ["User", "Pricing"]], graph["arrows"].first["pairs"]` becomes `assert_equal [["Order", "Pricing"], ["User", "Pricing"]], root_arrows(graph).first["pairs"].map { |pair| pair.values_at("from", "to") }`. Add one test for the omitted-namespace backlog item:
+and in every existing test replace `graph["boxes"]` with `root_nodes(graph)` and `graph["arrows"]` with `root_arrows(graph)`. Each expected member gains its label, the last segment of its id: `{ "id" => "Billing::Counter", "type" => "class", "label" => "Counter" }`, `{ "id" => "Billing::Gateway", "type" => "namespace", "label" => "Gateway" }`, `{ "id" => "Payments", "type" => "class", "label" => "Payments" }`, `{ "id" => "Order", "type" => "class", "label" => "Order" }`. A pair is now a hash, so compare pairs through `.map { |pair| pair.values_at("from", "to") }`. For example, `assert_equal [["Order", "Pricing"], ["User", "Pricing"]], graph["arrows"].first["pairs"]` becomes `assert_equal [["Order", "Pricing"], ["User", "Pricing"]], root_arrows(graph).first["pairs"].map { |pair| pair.values_at("from", "to") }`. Add one test for the omitted-namespace backlog item:
 
 ```ruby
       def test_an_omitted_namespace_leaves_the_namespace_list
@@ -1658,7 +1484,7 @@ In `test/server_test.rb`, in `test_a_policy_change_rescans_and_the_omitted_box_l
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `bundle exec ruby -Itest -Ilib test/views_test.rb`
-Expected: 10 errors, `uninitialized constant Uml::Viewer::Views`.
+Expected: 9 errors, `uninitialized constant Uml::Viewer::Views`.
 
 Run: `bundle exec rake test`
 Expected: the policy, graph, commands and server tests fail on the missing `views` and on the ids hash.
@@ -1687,7 +1513,7 @@ module Uml
       end
 
       def self.path(entry, namespaces)
-        segments = Policy.segments(entry)
+        segments = entry["id"].split("::")
         containers = (1...segments.size).map { |count| ["namespace", segments.first(count).join("::")] }
         containers << ["namespace", entry["id"]] if namespaces.include?(entry["id"])
         containers = [["folder", "folder:#{entry['kind_folder']}"]] if containers.empty?
@@ -1713,7 +1539,7 @@ module Uml
       def self.node(type, id, entry)
         case type
         when "class"
-          { "id" => id, "type" => "class", "label" => Policy.label(entry), "stereotype" => entry["stereotype"], "level" => entry["level"], "levels" => nil }
+          { "id" => id, "type" => "class", "label" => id.split("::").last, "stereotype" => entry["stereotype"], "level" => entry["level"], "levels" => nil }
         when "folder" then { "id" => id, "type" => "folder", "label" => id.delete_prefix("folder:"), "levels" => nil }
         else { "id" => id, "type" => "namespace", "label" => id.split("::").last, "levels" => nil }
         end
@@ -1758,19 +1584,19 @@ In `lib/uml/viewer.rb`, add `require_relative "viewer/views"` directly after `re
   1. Compute `namespaces` from the kept classes and without omitted names:
 
 ```ruby
-        namespaces = scan["namespaces"].select { |name| classes.any? { |entry| Policy.segments(entry).size > 1 && entry["id"].start_with?("#{name}::") } }
+        namespaces = scan["namespaces"].select { |name| classes.any? { |entry| entry["id"].start_with?("#{name}::") } }
 ```
 
   2. Replace `"boxes" => ...` and `"arrows" => ...` in the returned hash with `"namespaces" => namespaces` and `"views" => Views.build(classes, namespaces, edges, foreign_edges)`, where `foreign_edges` is the local you build for the `"foreign_edges"` entry.
-  3. Delete `box_id`, `boxes` and `arrows`. Rename `in_namespace_box?` to `top_level?` with the opposite meaning, so the folder omit reads well:
+  3. Delete `box_id`, `boxes` and `arrows`. Replace `in_namespace_box?` with `top_level?`, which has the opposite meaning and takes the class entry, so the folder omit reads well:
 
 ```ruby
       def self.top_level?(entry, namespaces)
-        segments(entry).size == 1 && !namespaces.include?(entry["id"])
+        !entry["id"].include?("::") && !namespaces.include?(entry["id"])
       end
 ```
 
-and use `omit.include?("folder:#{entry['kind_folder']}") && top_level?(entry, namespaces)` in `apply`.
+and use `omit.include?("folder:#{entry['kind_folder']}") && top_level?(entry, namespaces)` in `apply`, in place of `... && !in_namespace_box?(entry["id"], namespaces)`.
 
 In `lib/uml/viewer/graph.rb`, build the graph as:
 
@@ -1802,10 +1628,10 @@ and replace `ids`:
 - [ ] **Step 6: Draw the root view.** In `lib/uml/viewer/web/app.js`, in `draw`:
   - change `graph.boxes.map((box) => {` to `graph.views.root.nodes.map((box) => {`;
   - change both uses of `graph.arrows` to `graph.views.root.arrows`;
-  - in `boxLines`, change `box.members.slice` and `box.members.length` to `(box.members || []).slice` and `(box.members || []).length`;
+  - in `boxLines`, change `box.members.slice` and `box.members.length` to `(box.members || []).slice` and `(box.members || []).length`, change `shortName(member.id)` to `member.label`, and delete the now unused `shortName` constant;
   - change the arrow title to `arrow.pairs.map((pair) => \`${pair.from} -> ${pair.to} (${pair.kind})\`).join("\n")`.
 
-Task 10 replaces this drawing with the full view drawing.
+Task 9 replaces this drawing with the full view drawing.
 
 - [ ] **Step 7: Run the tests**
 
@@ -1823,14 +1649,14 @@ git commit -m "feat: build one view per box with its nodes and collapsed arrows,
 
 ---
 
-### Task 8: Scan summary in the CLI, and smoke
+### Task 7: Scan summary in the CLI, and smoke
 
 **Files:**
 - Modify: `lib/uml/viewer/cli.rb`, `lib/uml/viewer/smoke.rb`
 - Test: `test/cli_test.rb`, `test/smoke_test.rb`
 
 **Interfaces:**
-- Consumes: `graph["summary"]` with `unresolved`, `polymorphic`, `warnings` (Task 6).
+- Consumes: `graph["summary"]` with `unresolved`, `polymorphic`, `warnings` (Task 5).
 - Produces:
   - `uml-viewer scan` prints, in this order: the counts line (unchanged), `"N unresolved associations, N polymorphic associations (no target)"`, the `unlisted foreign:` line (unchanged), then one `"warning: <text>"` line per warning.
   - `Smoke.run(paths, out:, &between)` prints each violating edge as `"  <from> -> <to> (<kind>)"` under the counts line; checks git status also when the scan raises; fails a folder that is not a git repository; accepts an empty `expect.yml`; fails a non-list `expect.yml`.
@@ -2011,14 +1837,14 @@ git commit -m "feat: print association counts and warnings in scan, and make smo
 
 ---
 
-### Task 9: Server: the page without a token, /source, /session and source polling
+### Task 8: Server: the page without a token, /source, /session and source polling
 
 **Files:**
 - Modify: `lib/uml/viewer/server.rb`, `lib/uml/viewer/graph.rb`
 - Test: `test/server_test.rb`, `test/graph_test.rb`
 
 **Interfaces:**
-- Consumes: `graph.json` version 2 (Task 7).
+- Consumes: `graph.json` version 2 (Task 6).
 - Produces:
   - `GET /` serves `index.html` without a token.
   - `GET /source?file=<path>&line=<n>` (token) returns `{"file", "line", "text"}` for a file of a class in `graph.json`; 403 `{"error" => "not a scanned file"}` for any other path; 404 `{"error" => "file gone: <path>"}` when the file no longer exists.
@@ -2277,21 +2103,21 @@ git commit -m "feat: serve source slices and the stored view, serve the page wit
 
 ---
 
-### Task 10: The page: drill-down, crumbs, zoom, session and reload
+### Task 9: The page: drill-down, crumbs, zoom, session and reload
 
 **Files:**
 - Modify: `lib/uml/viewer/web/index.html`, `lib/uml/viewer/web/app.js`
 - Test: `test/browser_test.rb`
 
 **Interfaces:**
-- Consumes: `graph.views` (Task 7); `GET /session`, `PUT /session`, the page without a token (Task 9).
-- Produces (DOM contract for Task 11 and the tests):
+- Consumes: `graph.views` (Task 6); `GET /session`, `PUT /session`, the page without a token (Task 8).
+- Produces (DOM contract for Task 10 and the tests):
   - Each node is `g.box` with `data-id`, `data-type` (`namespace`, `folder`, `class` or `foreign`) and the class `box <type>`. A foreign node draws an `ellipse`, the others a `rect`.
   - Member lines are `text.member` with `data-id` and `data-kind` (`namespace` or `class`).
   - `#crumbs` holds one `button.crumb` per open view, with `data-id`; the root crumb shows the graph title.
   - Double-click on a namespace or folder box, or on a namespace member line, opens that view. `Escape` goes up one view. `Ctrl` (or `Cmd`) with `=`/`+`, `-`, `0` zooms in, out, and resets.
   - The page saves `{drill, zoom, scroll}` with `PUT /session` at most once per second, and restores it on load.
-  - Functions Task 11 extends: `drawArrow(edge, arrow, index)`, `openMenu(x, y)`, `onKey(event)`, `onDoubleClick(event)`.
+  - Functions Task 10 extends: `drawArrow(edge, arrow, index)`, `openMenu(x, y)`, `onKey(event)`, `onDoubleClick(event)`.
 
 - [ ] **Step 1: Write the failing tests.** Add to `test/browser_test.rb` (helpers first, in the helper section):
 
@@ -2402,6 +2228,14 @@ git commit -m "feat: serve source slices and the stored view, serve the page wit
         wait_for('g.box.foreign[data-id="foreign:JSON"] ellipse')
         assert_equal "JSON", @browser.at_css('g.box.foreign[data-id="foreign:JSON"] text.title').text
         assert @browser.at_css("path.arrow")
+      end
+
+      def test_a_project_without_classes_draws_an_empty_diagram_without_an_error
+        reboot(build_project("lib/scripts/run_once.rb" => "puts 1\n"))
+        @browser.goto(@server.url)
+        wait_until(-> { "the title crumb never showed" }) { crumbs == ["extra"] }
+        assert_equal "", @browser.at_css("#banner").text
+        assert_empty @browser.css("g.box")
       end
 
       def test_a_failed_graph_fetch_says_server_not_reachable
@@ -2797,14 +2631,14 @@ git commit -m "feat: drill into boxes with crumbs and Escape, zoom with Ctrl, an
 
 ---
 
-### Task 11: The page: class card, source panel, hover popup, Regen and the menu edge
+### Task 10: The page: class card, source panel, hover popup, Regen and the menu edge
 
 **Files:**
 - Modify: `lib/uml/viewer/web/index.html`, `lib/uml/viewer/web/app.js`
 - Test: `test/browser_test.rb`
 
 **Interfaces:**
-- Consumes: the DOM contract and functions of Task 10; `graph.classes[].ops` (Task 3); `GET /source` (Task 9).
+- Consumes: the DOM contract and functions of Task 9; `graph.classes[].ops` (Task 3); `GET /source` (Task 8).
 - Produces:
   - Double-click on a class member line or a class node opens `#card`: the id, `«stereotype» · <kind folder> · level N` (or `no level`), one `p.file` per file, a `p.error` per parse error under `h3.error`, one `li.op` per op (`+` public, `-` private, `#` protected, then the name and `cc N`, with `data-file` and `data-line`), and the note "static scan: dynamic references (constantize, send) are not seen".
   - A click on `li.op` opens `#source` with the header `<file>:<line>` and one `div.line` per line; the line of the op has the class `current` and scrolls into view. A refused file shows the server reason.
@@ -3113,7 +2947,7 @@ git commit -m "feat: open a class card with its ops, a source panel at the op li
 
 ---
 
-### Task 12: Backlog, README and the real-project check
+### Task 11: Backlog, README and the real-project check
 
 **Files:**
 - Modify: `docs/backlog.md`, `README.md`
@@ -3133,7 +2967,7 @@ This task changes documentation and runs smoke; it adds no code.
 Double-click a box to open it, Esc to go back. Double-click a class for its card; click an op for its source. Hover an arrow for its pairs. Right-click a box or a class to send Explain or Omit to Claude.
 ```
 
-- [ ] **Step 3: Check the private expect files.** Before this plan's eng-review, the user confirmed new real edges for each test app: at least one `association` with `class_name:`, one compact-model sibling `association` (legacy app), one red `inheritance` or `implements`, and one `ActiveAdmin(X) -> X` (legacy app). They are in each app's `expect.yml` in its state folder. Never copy them into the repository.
+- [ ] **Step 3: Check the private expect files.** Before this plan's eng-review, the user confirmed new real edges for each test app: at least one `association` with `class_name:`, one compact-model sibling `association` (legacy app), and one red `inheritance` or `implements`. They are in each app's `expect.yml` in its state folder. Never copy them into the repository.
 
 - [ ] **Step 4: Run smoke on the three apps**
 
