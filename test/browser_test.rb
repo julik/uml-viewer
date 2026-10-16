@@ -352,6 +352,110 @@ module Uml
         refute_includes @browser.at_css("#banner").text, "Failed to fetch"
       end
 
+      def op_texts
+        @browser.css("#card li.op").map(&:text)
+      end
+
+      def test_double_click_on_a_class_opens_its_card_with_ops_level_and_files
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Order"]')
+        wait_for_text("#card h2", "Order")
+        assert_includes @browser.at_css("#card").text, "«class» · models · level 0"
+        assert_equal ["app/models/order.rb"], @browser.css("#card p.file").map(&:text)
+        assert_includes op_texts, "+ total  cc 1"
+        assert_includes @browser.at_css("#card").text, "static scan: dynamic references (constantize, send) are not seen"
+      end
+
+      def test_the_card_shows_each_visibility_sign
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        double_click('g.box.class[data-id="Reports::Exporter"] text.title')
+        wait_for_text("#card h2", "Reports::Exporter")
+        ["+ self.build  cc 1", "- self.secret  cc 1", "+ run  cc 2", "# rows  cc 1", "- format  cc 1"].each do |text|
+          assert_includes op_texts, text
+        end
+      end
+
+      def test_the_card_of_a_broken_file_shows_its_parse_errors
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Broken"]')
+        wait_for("#card h3.error")
+        assert_match(/\Aline \d+: /, @browser.at_css("#card p.error").text)
+      end
+
+      def test_a_click_on_an_op_opens_the_source_at_its_line
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Order"]')
+        wait_for_text("#card h2", "Order")
+        @browser.css("#card li.op").find { |op| op.text.start_with?("+ total") }.click
+        wait_for_text("#source h2", "app/models/order.rb:7")
+        assert_includes @browser.at_css("#source .line.current").text, "def total = Order.sum(:amount)"
+      end
+
+      def test_a_refused_source_file_shows_the_reason_in_the_panel
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Order"]')
+        wait_for("#card li.op")
+        @browser.evaluate('document.querySelector("#card li.op").dataset.file = "Gemfile"')
+        @browser.at_css("#card li.op").click
+        wait_for_text("#source", "not a scanned file")
+      end
+
+      def test_a_class_that_left_the_graph_shows_a_toast_instead_of_a_card
+        @browser.goto(@server.url)
+        wait_for('text.member[data-id="Order"]')
+        @browser.evaluate('document.querySelector(\'text.member[data-id="Order"]\').dataset.id = "Gone"')
+        double_click('text.member[data-id="Gone"]')
+        wait_for_text("#toast", "class Gone is not in the graph")
+      end
+
+      def test_escape_closes_the_card_before_it_leaves_the_view
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        double_click('g.box.class[data-id="Reports::Summary"] text.title')
+        wait_for_text("#card h2", "Reports::Summary")
+        press("Escape")
+        wait_until(-> { "the card stayed open" }) { @browser.at_css("#card")["hidden"] }
+        assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def test_hovering_a_red_arrow_lists_its_pairs_with_the_red_ones_marked
+        @browser.goto(@server.url)
+        hit = 'path.hit.violating[data-from="folder:models"][data-to="folder:services"]'
+        wait_for(hit)
+        @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))))
+        wait_for("#popup .pair.violating")
+        assert_includes @browser.css("#popup .pair.violating").map(&:text), "Order -> Pricing (dependency)"
+      end
+
+      def test_regen_rescans
+        @browser.goto(@server.url)
+        wait_for("#regen")
+        before = File.mtime(@workspace.path("graph.json"))
+        sleep 1.1
+        @browser.at_css("#regen").click
+        wait_until(-> { "Regen never rewrote graph.json" }) { File.mtime(@workspace.path("graph.json")) > before }
+      end
+
+      def test_regen_with_the_server_gone_shows_a_toast
+        @browser.goto(@server.url)
+        wait_for("#regen")
+        shutdown_server
+        @browser.at_css("#regen").click
+        wait_for_text("#toast", "rescan not started: server not reachable")
+      end
+
+      def test_the_context_menu_stays_inside_the_window
+        @browser.goto(@server.url)
+        wait_for('text.member[data-id="Order"]')
+        @browser.evaluate(<<~JS)
+          document.querySelector('text.member[data-id="Order"]').dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: innerWidth - 2, clientY: innerHeight - 2 }))
+        JS
+        wait_for("#menu.open")
+        assert @browser.evaluate('(() => { const r = document.getElementById("menu").getBoundingClientRect(); return r.right <= innerWidth && r.bottom <= innerHeight; })()')
+      end
+
       private
 
       def boot_box_project(count)
