@@ -45,6 +45,22 @@ module Uml
                               .select { |node| %w[namespace folder].include?(node["type"]) }.map { |node| node["id"] }
         { "class" => Set.new(graph["classes"].map { |entry| entry["id"] }), "box" => Set.new(boxes) }
       end
+
+      def self.inputs(workspace)
+        sources = begin
+          PolicyFile.load(workspace.path("policy.yml"))["sources"]
+        rescue PolicyFile::Invalid
+          PolicyFile::DEFAULTS["sources"]
+        end
+        files = sources.flat_map { |source| Dir.glob("#{source}/**/*.rb", base: workspace.root) }
+        ([workspace.path("policy.yml")] + files.map { |file| File.join(workspace.root, file) }).to_h { |path| [path, mtime(path)] }
+      end
+
+      def self.mtime(path)
+        File.mtime(path).to_f
+      rescue Errno::ENOENT
+        nil
+      end
     end
   end
 end

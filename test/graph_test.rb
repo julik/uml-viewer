@@ -98,6 +98,27 @@ module Uml
         summary = graph["summary"]
         assert_equal [0, 0, []], summary.values_at("unresolved", "polymorphic", "warnings")
       end
+
+      def test_inputs_list_the_policy_and_every_source_file_and_survive_a_dangling_symlink
+        project = project_copy
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        File.symlink(File.join(project, "app/models/missing.rb"), File.join(project, "app/models/ghost.rb"))
+        inputs = Graph.inputs(workspace)
+        ghost = File.join(workspace.root, "app/models/ghost.rb")
+        assert_includes inputs.keys, workspace.path("policy.yml")
+        assert_kind_of Float, inputs[File.join(workspace.root, "app/models/order.rb")]
+        assert inputs.key?(ghost), "the dangling symlink is not listed"
+        assert_nil inputs[ghost]
+      end
+
+      def test_inputs_fall_back_to_the_default_sources_when_the_policy_is_invalid
+        project = project_copy
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        workspace.write_atomic("policy.yml", "levels: [\n")
+        assert_includes Graph.inputs(workspace).keys, File.join(workspace.root, "app/models/order.rb")
+      end
     end
   end
 end

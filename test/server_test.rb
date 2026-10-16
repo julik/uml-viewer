@@ -24,7 +24,7 @@ module Uml
 
       def request(method, path, body: nil, token: @server.token, host: "127.0.0.1:#{@server.port}")
         http = Net::HTTP.new("127.0.0.1", @server.port)
-        klass = { get: Net::HTTP::Get, post: Net::HTTP::Post }.fetch(method)
+        klass = { get: Net::HTTP::Get, post: Net::HTTP::Post, put: Net::HTTP::Put }.fetch(method)
         req = klass.new(path)
         req["Host"] = host
         req["X-UML-Token"] = token if token
@@ -63,9 +63,83 @@ module Uml
         assert_equal "http://127.0.0.1:#{@server.port}/?token=#{@server.token}", @server.url
       end
 
-      def test_the_page_needs_the_token_in_the_query
-        assert_equal "403", request(:get, "/", token: nil).code
-        assert_equal "200", request(:get, "/?token=#{@server.token}", token: nil).code
+      def test_the_page_needs_no_token_because_it_holds_no_data
+        response = request(:get, "/", token: nil)
+        assert_equal ["200", "text/html; charset=utf-8"], [response.code, response["Content-Type"]]
+        refute_includes response.body, @server.token
+      end
+
+      def test_the_page_refuses_to_be_framed
+        response = request(:get, "/", token: nil)
+        assert_equal ["DENY", "frame-ancestors 'none'"], [response["X-Frame-Options"], response["Content-Security-Policy"]]
+      end
+
+      def test_source_returns_the_text_of_a_scanned_file_with_the_line
+        body = JSON.parse(request(:get, "/source?file=app/models/order.rb&line=7").body)
+        assert_equal ["app/models/order.rb", 7], body.values_at("file", "line")
+        assert_includes body["text"], "def total = Order.sum(:amount)"
+      end
+
+      def test_source_refuses_a_path_outside_the_graph
+        ["../../etc/passwd", "Gemfile", "app/views/orders/index.html.erb", "lib/scripts/run_once.rb"].each do |path|
+          response = request(:get, "/source?file=#{path}&line=1")
+          assert_equal ["403", "not a scanned file"], [response.code, JSON.parse(response.body)["error"]], path
+        end
+      end
+
+      def test_source_needs_the_token
+        assert_equal "403", request(:get, "/source?file=app/models/order.rb&line=1", token: nil).code
+      end
+
+      def test_source_of_a_file_deleted_since_the_scan_gets_404_with_the_file
+        File.delete(File.join(@project, "app/models/user.rb"))
+        response = request(:get, "/source?file=app/models/user.rb&line=1")
+        assert_equal ["404", "file gone: app/models/user.rb"], [response.code, JSON.parse(response.body)["error"]]
+      end
+
+      def test_session_starts_empty_and_returns_what_was_stored_with_mode_0600
+        assert_equal({}, JSON.parse(request(:get, "/session").body))
+        view = { "drill" => ["root", "Reports"], "zoom" => 1.25, "scroll" => { "x" => 0, "y" => 40 }, "proposal" => nil }
+        assert_equal "204", request(:put, "/session", body: JSON.generate(view)).code
+        assert_equal view, JSON.parse(request(:get, "/session").body)
+        assert_equal 0o600, File.stat(@workspace.path("session.json")).mode & 0o777
+      end
+
+      def test_a_bad_session_gets_400_with_the_reason
+        assert_equal "unknown key: theme", JSON.parse(request(:put, "/session", body: '{"theme":"dark"}').body)["error"]
+        assert_equal "drill must be a list of ids", JSON.parse(request(:put, "/session", body: '{"drill":"root"}').body)["error"]
+        assert_equal "zoom must be a number", JSON.parse(request(:put, "/session", body: '{"zoom":"big"}').body)["error"]
+        assert_equal "scroll must hold x and y numbers", JSON.parse(request(:put, "/session", body: '{"scroll":{"x":1}}').body)["error"]
+        assert_equal "proposal must be an id or null", JSON.parse(request(:put, "/session", body: '{"proposal":3}').body)["error"]
+        assert_equal "session must be a JSON object", JSON.parse(request(:put, "/session", body: "[1]").body)["error"]
+        assert_equal ["400", "body is not JSON"], request(:put, "/session", body: "{").then { |r| [r.code, JSON.parse(r.body)["error"]] }
+        assert_equal "413", request(:put, "/session", body: JSON.generate("drill" => ["x" * 5000])).code
+      end
+
+      def test_a_new_source_file_rescans_and_a_deleted_one_leaves_the_graph
+        path = File.join(@project, "app/models/invoice.rb")
+        File.write(path, "class Invoice\nend\n")
+        wait_for_graph("the new Invoice class never reached the graph") { |graph| graph["classes"].any? { |entry| entry["id"] == "Invoice" } }
+        File.delete(path)
+        wait_for_graph("the deleted Invoice class stayed in the graph") { |graph| graph["classes"].none? { |entry| entry["id"] == "Invoice" } }
+      end
+
+      def test_an_unreadable_policy_shows_in_version_and_the_poll_goes_on
+        File.chmod(0o000, @workspace.path("policy.yml"))
+        Timeout.timeout(5, Timeout::Error, "/version never reported the watch error") do
+          sleep 0.1 until JSON.parse(request(:get, "/version").body)["error"].to_s.start_with?("cannot watch the project: ")
+        end
+        File.chmod(0o600, @workspace.path("policy.yml"))
+        File.write(File.join(@project, "app/models/invoice.rb"), "class Invoice\nend\n")
+        wait_for_graph("the poll stopped after the read error") { |graph| graph["classes"].any? { |entry| entry["id"] == "Invoice" } }
+      ensure
+        File.chmod(0o600, @workspace.path("policy.yml"))
+      end
+
+      def wait_for_graph(message)
+        Timeout.timeout(5, Timeout::Error, message) do
+          sleep 0.1 until yield(JSON.parse(request(:get, "/graph.json").body))
+        end
       end
 
       def test_static_scripts_need_no_token
