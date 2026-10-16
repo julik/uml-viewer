@@ -36,8 +36,6 @@ module Uml
       end
 
       def stripped(candidates, written_size)
-        return nil if written_size < 2
-
         candidates.each do |candidate|
           segments = candidate.split("::")
           1.upto(written_size - 1) do |strip|

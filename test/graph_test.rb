@@ -14,7 +14,8 @@ module Uml
       end
 
       def test_the_first_example_of_the_spec_gives_a_red_dependency_from_order_to_reports_summary
-        assert_equal({ "from" => "Order", "to" => "Reports::Summary", "kind" => "dependency", "violating" => true }, edge("Order", "Reports::Summary"))
+        assert_equal({ "from" => "Order", "to" => "Reports::Summary", "kind" => "dependency", "kinds" => ["dependency"], "violating" => true },
+                     edge("Order", "Reports::Summary"))
       end
 
       def test_reports_summary_to_order_is_not_violating

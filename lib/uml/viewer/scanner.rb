@@ -6,6 +6,7 @@ module Uml
     class Scanner
       SKIPPED_FOLDERS = %w[app/assets app/views app/javascript app/frontend lib/tasks vendor node_modules tmp test spec].freeze
       DATA_CALLS = { "Data" => :define, "Struct" => :new, "Class" => :new }.freeze
+      KINDS = %w[inheritance implements association dependency].freeze
 
       def self.constant_name(node)
         case node
@@ -38,14 +39,18 @@ module Uml
         classes, aliases = build_classes(parsed, declarations, mains)
         namespaces = declarations.values.flat_map { |found| found[:namespaces] }.to_set
         resolver = Resolver.new(classes: aliases.keys.to_set, namespaces: namespaces)
-        edges, foreign = build_edges(parsed, declarations, mains, aliases, resolver)
+        edges, foreign_edges, foreign, counts = build_edges(parsed, declarations, mains, aliases, resolver)
         {
           "classes" => classes.values.sort_by { |entry| entry["id"] },
           "namespaces" => namespaces.to_a.sort,
           "edges" => edges,
+          "foreign_edges" => foreign_edges,
           "skipped" => (files - unreadable - mains.keys).sort,
           "unreadable" => unreadable,
-          "foreign" => foreign.sort_by { |name, count| [-count, name] }
+          "folders" => existing_folders,
+          "foreign" => foreign.sort_by { |name, count| [-count, name] },
+          "unresolved" => counts["unresolved"],
+          "polymorphic" => counts["polymorphic"]
         }
       end
 
@@ -107,23 +112,46 @@ module Uml
       end
 
       def build_edges(parsed, declarations, mains, aliases, resolver)
-        pairs = Set.new
+        kinds = Hash.new { |hash, pair| hash[pair] = Set.new }
+        foreign_kinds = Hash.new { |hash, pair| hash[pair] = Set.new }
         foreign = Hash.new(0)
+        counts = { "unresolved" => 0, "polymorphic" => 0 }
         mains.each do |file, main|
           own = own_ids(declarations[file])
-          References.new(parsed[file].value).collect.each do |reference|
+          references = References.new(parsed[file].value)
+          references.collect.each do |reference|
             from = own.include?(reference[:owner]) ? aliases[reference[:owner]] : main[:id]
             found = resolver.resolve(reference[:name], nesting: reference[:nesting], enclosing: reference[:nesting].last)
-            if found.nil?
-              foreign[reference[:name].delete_prefix("::").split("::").first] += 1
-            elsif found.first == :class
+            if found&.first == :class
               to = aliases.fetch(found.last, found.last)
-              pairs << [from, to] unless from == to
+              kinds[[from, to]] << reference[:kind] unless from == to
+            elsif reference[:kind] == "association"
+              counts["unresolved"] += 1
+            elsif found.nil?
+              first = reference[:name].delete_prefix("::").split("::").first
+              foreign[first] += 1
+              foreign_kinds[[from, first]] << reference[:kind]
             end
           end
+          counts["unresolved"] += references.unresolved
+          counts["polymorphic"] += references.polymorphic
         end
-        edges = pairs.to_a.sort.map { |from, to| { "from" => from, "to" => to, "kind" => "dependency" } }
-        [edges, foreign]
+        [merge_kinds(kinds), merge_kinds(foreign_kinds), foreign, counts]
+      end
+
+      def existing_folders
+        skipped_app = SKIPPED_FOLDERS.select { |folder| folder.start_with?("app/") }
+        app = Dir.glob("app/*/", base: @root).map { |dir| dir.chomp("/") }.reject { |dir| skipped_app.include?(dir) }
+                 .map { |dir| dir.delete_prefix("app/") }
+        lib = File.directory?(File.join(@root, "lib")) || app.include?("lib")
+        ((app - ["lib"]) + (lib ? ["lib"] : [])).sort
+      end
+
+      def merge_kinds(kinds)
+        kinds.sort.map do |(from, to), found|
+          ordered = KINDS.select { |kind| found.include?(kind) }
+          { "from" => from, "to" => to, "kind" => ordered.first, "kinds" => ordered }
+        end
       end
 
       class Declarations
@@ -202,10 +230,19 @@ module Uml
       end
 
       class References < Prism::Visitor
+        ASSOCIATIONS = %i[has_many has_one belongs_to has_and_belongs_to_many].freeze
+        PLURAL = %i[has_many has_and_belongs_to_many].freeze
+        INCLUSIONS = %i[include extend prepend].freeze
+
+        attr_reader :polymorphic, :unresolved
+
         def initialize(program)
           @program = program
           @nesting = []
           @found = []
+          @kind = "dependency"
+          @polymorphic = 0
+          @unresolved = 0
           super()
         end
 
@@ -215,12 +252,22 @@ module Uml
         end
 
         def visit_class_node(node)
-          node.superclass&.accept(self)
+          with_kind("inheritance") { node.superclass&.accept(self) }
           enter(node) { node.body&.accept(self) }
         end
 
         def visit_module_node(node)
           enter(node) { node.body&.accept(self) }
+        end
+
+        def visit_call_node(node)
+          if node.receiver.nil? && INCLUSIONS.include?(node.name)
+            with_kind("implements") { node.arguments&.accept(self) }
+            node.block&.accept(self)
+          else
+            associate(node) if association?(node)
+            super
+          end
         end
 
         def visit_constant_read_node(node)
@@ -238,6 +285,42 @@ module Uml
 
         private
 
+        def association?(node)
+          node.receiver.nil? && ASSOCIATIONS.include?(node.name) && node.arguments&.arguments&.first.is_a?(Prism::SymbolNode)
+        end
+
+        def associate(node)
+          options = options_of(node)
+          if options["polymorphic"].is_a?(Prism::TrueNode)
+            @polymorphic += 1
+          elsif options.key?("class_name") && literal(options["class_name"]).nil?
+            @unresolved += 1
+          else
+            record(association_target(node, options), kind: "association")
+          end
+        end
+
+        def association_target(node, options)
+          return literal(options["class_name"]) if options.key?("class_name")
+
+          base = literal(options["source"]) || node.arguments.arguments.first.unescaped
+          base = Inflector.singularize(base) if PLURAL.include?(node.name)
+          Inflector.camelize(base)
+        end
+
+        def options_of(node)
+          hash = node.arguments.arguments.find { |argument| argument.is_a?(Prism::KeywordHashNode) || argument.is_a?(Prism::HashNode) }
+          return {} if hash.nil?
+
+          hash.elements.filter_map do |element|
+            [element.key.unescaped, element.value] if element.is_a?(Prism::AssocNode) && element.key.is_a?(Prism::SymbolNode)
+          end.to_h
+        end
+
+        def literal(node)
+          node.unescaped if node.is_a?(Prism::SymbolNode) || node.is_a?(Prism::StringNode)
+        end
+
         def enter(node)
           name = Scanner.constant_name(node.constant_path)
           return yield if name.nil?
@@ -248,8 +331,16 @@ module Uml
           @nesting.pop unless name.nil?
         end
 
-        def record(name)
-          @found << { name: name, nesting: @nesting.dup, owner: @nesting.last }
+        def with_kind(kind)
+          previous = @kind
+          @kind = kind
+          yield
+        ensure
+          @kind = previous
+        end
+
+        def record(name, kind: @kind)
+          @found << { name: name, nesting: @nesting.dup, owner: @nesting.last, kind: kind }
         end
       end
     end

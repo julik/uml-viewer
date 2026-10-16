@@ -64,6 +64,25 @@ module Uml
       def test_at_the_top_level_only_the_reference_itself_is_a_candidate
         assert_equal [:class, "User"], resolver.resolve("User", nesting: [], enclosing: nil)
       end
+
+      def test_the_strip_step_also_works_on_a_rails_prefix_candidate
+        assert_equal [:class, "Shop::Store"],
+                     resolver.resolve("Store::KINDS", nesting: ["Shop::Customer"], enclosing: "Shop::Customer")
+      end
+
+      def test_a_reference_of_four_segments_strips_down_to_the_class
+        assert_equal [:class, "Reports::Summary"],
+                     resolver.resolve("Reports::Summary::Row::WIDTH", nesting: ["Order"], enclosing: "Order")
+      end
+
+      def test_a_leading_double_colon_tries_only_the_top_level
+        resolver = Resolver.new(classes: Set["Order", "Shop::Order"], namespaces: Set["Shop"])
+        assert_equal [:class, "Order"], resolver.resolve("::Order", nesting: ["Shop"], enclosing: "Shop")
+      end
+
+      def test_the_strip_step_keeps_the_first_written_segment
+        assert_nil resolver.resolve("Foo::BAR", nesting: ["Reports", "Reports::Summary"], enclosing: "Reports::Summary")
+      end
     end
   end
 end
