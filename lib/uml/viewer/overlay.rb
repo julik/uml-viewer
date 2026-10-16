@@ -4,6 +4,7 @@ module Uml
       NO_COVERAGE = "no coverage: run your tests with SimpleCov".freeze
       STALE = "coverage older than this file".freeze
       NOT_LOADED = "not loaded by the tests".freeze
+      UNTESTED = "no test runs these methods".freeze
       PARTIAL = "coverage looks partial: run the full suite".freeze
       COUNTS = %w[killed survived uncovered].freeze
 
@@ -19,22 +20,36 @@ module Uml
           counts = mutation_counts(entry["id"], ops, mutation)
           tested = counts && mutation_grade(counts)
           entry.merge(
-            "ops" => ops, "coverage_notes" => entry["files"].filter_map { |file| notes[states[file]] }.uniq,
+            "ops" => ops, "coverage_notes" => coverage_notes(entry["files"], states, notes, ops),
             "crap" => crap, "mutation" => tested, "grade" => mean_grade(crap, tested)
           )
         end
         { "classes" => graded, "coverage" => summary(coverage, present, files.size, partial) }
       end
 
+      def self.coverage_notes(files, states, notes, ops)
+        listed = files.filter_map { |file| notes[states[file]] }.uniq
+        loaded = files.any? { |file| states[file] == :lines }
+        loaded && no_test_runs?(measured_ops(ops)) ? listed + [UNTESTED] : listed
+      end
+
+      def self.measured_ops(ops)
+        ops.reject { |op| op["coverage"].nil? }
+      end
+
+      def self.no_test_runs?(measured)
+        measured.any? && measured.all? { |op| op["coverage"].zero? }
+      end
+
       def self.class_crap(ops, cutoffs)
-        measured = ops.reject { |op| op["coverage"].nil? }
+        measured = measured_ops(ops)
         return nil if measured.empty?
 
         untested(stats(measured.map { |op| op["crap"] }, cutoffs), measured)
       end
 
       def self.untested(crap, measured)
-        measured.all? { |op| op["coverage"].zero? } ? crap.merge("grade" => 1) : crap
+        no_test_runs?(measured) ? crap.merge("grade" => 1) : crap
       end
 
       def self.file_state(file, coverage, mtimes, partial)
@@ -129,7 +144,7 @@ module Uml
       end
 
       def self.pooled(entries, cutoffs)
-        measured = entries.flat_map { |entry| entry["ops"].reject { |op| op["coverage"].nil? } }
+        measured = entries.flat_map { |entry| measured_ops(entry["ops"]) }
         counts = entries.filter_map { |entry| entry.dig("mutation", "counts") }
         crap = measured.empty? ? nil : untested(stats(measured.map { |op| op["crap"] }, cutoffs), measured)
         tested = counts.empty? ? nil : mutation_grade(COUNTS.to_h { |key| [key, counts.sum { |count| count[key] }] })

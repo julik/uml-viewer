@@ -91,6 +91,19 @@ module Uml
         assert_equal [1, 10], result.map { |entry| entry["crap"]["grade"] }
       end
 
+      def test_a_loaded_class_that_no_test_runs_says_so_in_its_notes_and_a_tested_one_does_not
+        untested = klass("Untested", [op("a", 1, 1, 3)])
+        tested = klass("Tested", [op("a", 1, 1, 3, file: "app/models/tested.rb")])
+        lines = { "app/models/order.rb" => [1, 0, nil], "app/models/tested.rb" => [1, 1, nil] }
+        result = apply([untested, tested], lines: lines)["classes"]
+        assert_equal [["no test runs these methods"], []], result.map { |entry| entry["coverage_notes"] }
+      end
+
+      def test_a_stale_class_with_coverage_zero_methods_keeps_only_the_stale_note
+        result = apply([klass("Untested", [op("a", 1, 1, 3)])], lines: { "app/models/order.rb" => [1, 0, nil] }, time: 100, mtimes: { "app/models/order.rb" => 200.0 })
+        assert_equal ["coverage older than this file"], result["classes"].first["coverage_notes"]
+      end
+
       def test_the_partial_guard_is_fewer_than_half
         build = lambda do |present|
           classes = (1..10).map { |number| klass("Item#{number}", [op("run", 1, 1, 3, file: "app/models/item#{number}.rb")]) }
