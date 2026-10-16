@@ -50,7 +50,7 @@ Visible to the user:
   - The hover popup is not clamped to the window and can stay visible after a redraw removes the hovered arrow.
   - The open class card is not refreshed after a rescan, so its ops and line numbers can be stale.
   - A Regen that fails with an HTTP error says only the status, with no next step.
-  - graph.json is about 2.6 MB on the large app (ops are 1.4 MB of it). Measure again before milestone 3 adds coverage per op, and consider serving ops per class on demand.
+  - graph.json is about 3.2 MB on the large app (no coverage) and about 0.8 MB on the legacy app with coverage; consider serving ops per class on demand.
 
 Scanner and policy:
 
@@ -86,3 +86,12 @@ Tests:
   - No test pins the server start order (server.json last). The shutdown test's fixed sleep can only false-green on a slow machine.
   - No browser tests for zoom and scroll restore, zoom surviving a live reload, Ctrl+- and +, or a double-click on a folder box. The no-token page test cannot tell the token guard from the 403 path.
   - No test that Escape closes the source panel before the card.
+
+## Found in milestone 3
+
+  - coverage.rb has a `require "set"` that it does not need, and `filter_map` hides a nil timestamp. A Float timestamp is accepted.
+  - No tests for hit arrays of different lengths, a non-numeric timestamp, a non-Hash coverage value or a root tie.
+  - No overlay test for a custom missing note or for a file that is both stale and absent.
+  - No page test of a graded M dot, the "M grade N (score P%)" line or a box mean of C and M.
+  - The coverage_test unreadable test loops over its inputs.
+  - A SimpleCov oneshot_lines file reads as unreadable.
