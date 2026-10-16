@@ -61,7 +61,7 @@ These are rulings, recorded here so a reviewer can reject them.
 ```
 Failure                                  Handling                                  User sees                                         Test
 -------                                  --------                                  ---------                                         ----
-/source for a file outside the graph     403                                       source panel: "not a scanned file"                server_test, browser_test (Task 8, 11)
+/source for a file outside the graph     403                                       source panel: "not a scanned file"                server_test, browser_test (Task 8, 10)
 /source for a file deleted since scan    404                                       source panel: "file gone: <file>"                 server_test (Task 8)
 PUT /session with a bad body             400 with the reason                       nothing (the page sends only valid bodies)        server_test (Task 8)
 session.json names a missing view        nearest existing view on the path         that view                                         browser_test (Task 9)
