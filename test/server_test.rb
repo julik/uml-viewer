@@ -185,7 +185,7 @@ module Uml
         policy = File.read(@workspace.path("policy.yml")).sub("omit:\n", "omit:\n- Reports\n")
         @workspace.write_atomic("policy.yml", policy)
         Timeout.timeout(5, Timeout::Error, "the graph never dropped the omitted Reports box") do
-          sleep 0.1 until JSON.parse(request(:get, "/graph.json").body)["boxes"].none? { |box| box["id"] == "Reports" }
+          sleep 0.1 until JSON.parse(request(:get, "/graph.json").body)["views"]["root"]["nodes"].none? { |box| box["id"] == "Reports" }
         end
       end
 

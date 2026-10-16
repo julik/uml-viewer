@@ -4,7 +4,7 @@ require "set"
 module Uml
   module Viewer
     class CommandsTest < TestCase
-      IDS = Set["Order", "folder:models", "Reports"].freeze
+      IDS = { "class" => Set["Order"], "box" => Set["folder:models", "Reports"] }.freeze
 
       def validate(body, proposal_ids: Set[])
         Commands.validate(body, ids: IDS, proposal_ids: proposal_ids)
@@ -13,6 +13,11 @@ module Uml
       def test_explain_on_a_class_is_accepted
         assert_equal ["explain", { "id" => "Order", "kind" => "class", "proposal_id" => nil }, nil],
                      validate({ "op" => "explain", "target" => { "id" => "Order", "kind" => "class", "proposal_id" => nil } })
+      end
+
+      def test_a_box_id_sent_with_kind_class_is_refused
+        assert_equal "unknown target: folder:models",
+                     validate({ "op" => "omit", "target" => { "id" => "folder:models", "kind" => "class", "proposal_id" => nil } }).last
       end
 
       def test_omit_on_a_kind_box_is_accepted

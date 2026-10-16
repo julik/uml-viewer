@@ -23,9 +23,9 @@ module Uml
       end
 
       def test_a_model_depending_on_a_top_level_service_shows_as_a_red_arrow_between_kind_boxes
-        arrow = graph["arrows"].find { |a| a["from"] == "folder:models" && a["to"] == "folder:services" }
+        arrow = graph["views"]["root"]["arrows"].find { |a| a["from"] == "folder:models" && a["to"] == "folder:services" }
         assert arrow["violating"]
-        assert_includes arrow["pairs"], ["Order", "Pricing"]
+        assert_includes arrow["pairs"].map { |pair| pair.values_at("from", "to") }, ["Order", "Pricing"]
       end
 
       def test_application_record_is_omitted_by_the_first_policy
@@ -41,11 +41,16 @@ module Uml
         assert_equal before, Dir.glob("**/*", File::FNM_DOTMATCH, base: fixture).sort
       end
 
-      def test_ids_hold_classes_boxes_and_namespaces
+      def test_ids_hold_class_ids_and_box_ids_apart
         ids = Graph.ids(graph)
-        assert_includes ids, "Order"
-        assert_includes ids, "folder:models"
-        assert_includes ids, "Reports"
+        assert_includes ids["class"], "Order"
+        assert_includes ids["box"], "folder:models"
+        assert_includes ids["box"], "Reports"
+        refute_includes ids["class"], "folder:models"
+      end
+
+      def test_graph_json_is_version_2_with_views_and_no_boxes
+        assert_equal [2, true, false], [graph["version"], graph["views"].key?("Reports"), graph.key?("boxes")]
       end
 
       def test_an_invalid_policy_raises_and_keeps_the_old_graph

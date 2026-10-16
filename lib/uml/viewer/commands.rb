@@ -37,7 +37,7 @@ module Uml
         return "unknown proposal: #{proposal}" unless proposal.nil? || proposal_ids.include?(proposal)
         return nil unless target.key?("id")
         return "target kind must be class or box" unless %w[class box].include?(target["kind"])
-        return "unknown target: #{target['id']}" unless ids.include?(target["id"])
+        return "unknown target: #{target['id']}" unless ids.fetch(target["kind"]).include?(target["id"])
 
         nil
       end

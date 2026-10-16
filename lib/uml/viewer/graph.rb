@@ -16,12 +16,15 @@ module Uml
         scan = Scanner.new(workspace.root, sources: policy["sources"], skip: policy["skip"]).scan
         applied = Policy.apply(scan, policy)
         graph = {
-          "version" => 1,
+          "version" => 2,
           "title" => policy["title"].empty? ? File.basename(workspace.root) : policy["title"],
-          "namespaces" => scan["namespaces"],
           "proposals" => policy["proposals"],
-          "summary" => summary(scan, applied, policy)
-        }.merge(applied.slice("classes", "edges", "boxes", "arrows"))
+          "summary" => summary(scan, applied, policy),
+          "namespaces" => applied["namespaces"],
+          "classes" => applied["classes"],
+          "edges" => applied["edges"],
+          "views" => applied["views"]
+        }
         workspace.write_atomic("graph.json", JSON.generate(graph))
         graph
       end
@@ -38,7 +41,9 @@ module Uml
       end
 
       def self.ids(graph)
-        Set.new(graph["classes"].map { |entry| entry["id"] } + graph["boxes"].map { |box| box["id"] } + graph["namespaces"])
+        boxes = graph["views"].values.flat_map { |view| view["nodes"] }
+                              .select { |node| %w[namespace folder].include?(node["type"]) }.map { |node| node["id"] }
+        { "class" => Set.new(graph["classes"].map { |entry| entry["id"] }), "box" => Set.new(boxes) }
       end
     end
   end
