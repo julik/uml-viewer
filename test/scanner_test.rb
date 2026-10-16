@@ -189,6 +189,57 @@ module Uml
         assert_equal 21, names.size
         assert_equal names, result["foreign"].map(&:first)
       end
+
+      def test_each_class_lists_its_ops_with_lines
+        assert_equal [["labels", 4, 4], ["price", 5, 5], ["parse", 6, 6], ["total", 7, 7]],
+                     klass("Order")["ops"].map { |op| op.values_at("name", "line_start", "line_end") }
+        assert_equal [["initialize", "public", 2, 4, 1]],
+                     klass("Pricing")["ops"].map { |op| op.values_at("name", "visibility", "line_start", "line_end", "cc") }
+      end
+
+      def test_the_fixture_shows_every_visibility_form
+        assert_equal [
+          ["self.build", "public", 3, 1], ["self.secret", "private", 4, 1], ["run", "public", 6, 2],
+          ["rows", "protected", 12, 1], ["format", "private", 16, 1], ["helper", "public", 17, 1],
+          ["self.defaults", "public", 21, 1], ["self.hidden", "private", 25, 1]
+        ], klass("Reports::Exporter")["ops"].map { |op| op.values_at("name", "visibility", "line_start", "cc") }
+      end
+
+      def test_a_reopened_class_merges_ops_and_parse_errors_of_both_files
+        root = project(
+          "app/models/order.rb" => "class Order\n  def total = 0\nend\n",
+          "app/models/order_extra.rb" => "class Order\n  def tax = 1\n  def x(\nend\n"
+        )
+        order = Scanner.new(root).scan["classes"].find { |entry| entry["id"] == "Order" }
+        assert_equal ["app/models/order.rb", "app/models/order_extra.rb"], order["files"]
+        assert_equal [["total", "app/models/order.rb"], ["tax", "app/models/order_extra.rb"]],
+                     order["ops"].first(2).map { |op| op.values_at("name", "file") }
+        refute_empty order["parse_errors"]
+        assert_match(%r{\Aapp/models/order_extra\.rb line \d+: }, order["parse_errors"].first)
+      end
+
+      def test_a_skip_entry_with_a_trailing_slash_drops_the_folder
+        scan = Scanner.new(fixture, skip: ["app/controllers/"]).scan
+        assert_nil scan["classes"].find { |entry| entry["id"] == "OrdersController" }
+      end
+
+      def test_a_dangling_symlink_is_listed_as_unreadable_and_the_rest_still_scans
+        root = project("app/models/order.rb" => "class Order\nend\n")
+        File.symlink(File.join(root, "app/models/missing.rb"), File.join(root, "app/models/ghost.rb"))
+        result = Scanner.new(root).scan
+        assert_equal [["app/models/ghost.rb"], ["Order"]], [result["unreadable"], result["classes"].map { |entry| entry["id"] }]
+        assert_empty result["skipped"]
+      end
+
+      def test_a_constant_path_write_is_a_secondary_constant_of_its_file
+        root = project(
+          "app/services/billing/limits.rb" => "module Billing\n  class Limits\n  end\nend\nBilling::DEFAULT = 5\n",
+          "app/services/invoice.rb" => "class Invoice\n  def cap = Billing::DEFAULT\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert edge?("Invoice", "Billing::Limits", in_scan: result)
+        refute_includes result["foreign"].map(&:first), "Billing"
+      end
     end
   end
 end

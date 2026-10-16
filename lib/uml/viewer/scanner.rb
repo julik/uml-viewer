@@ -25,22 +25,26 @@ module Uml
       def initialize(root, sources: %w[app lib], skip: [])
         @root = root
         @sources = sources
-        @skip = SKIPPED_FOLDERS + skip
+        @skip = SKIPPED_FOLDERS + skip.map { |folder| folder.chomp("/") }
       end
 
       def scan
         files = ruby_files
-        parsed = files.to_h { |file| [file, Prism.parse_file(File.join(@root, file))] }
+        unreadable = files.reject { |file| File.file?(File.join(@root, file)) && File.readable?(File.join(@root, file)) }
+        parsed = (files - unreadable).to_h { |file| [file, Prism.parse_file(File.join(@root, file))] }
         declarations = parsed.to_h { |file, result| [file, Declarations.new(result.value).collect] }
-        classes, aliases, skipped = build_classes(parsed, declarations)
+        mains = declarations.reject { |_, found| found[:declared].empty? }
+                            .to_h { |file, found| [file, main_constant(file, found[:declared])] }
+        classes, aliases = build_classes(parsed, declarations, mains)
         namespaces = declarations.values.flat_map { |found| found[:namespaces] }.to_set
         resolver = Resolver.new(classes: aliases.keys.to_set, namespaces: namespaces)
-        edges, foreign = build_edges(parsed, declarations, aliases, resolver)
+        edges, foreign = build_edges(parsed, declarations, mains, aliases, resolver)
         {
           "classes" => classes.values.sort_by { |entry| entry["id"] },
           "namespaces" => namespaces.to_a.sort,
           "edges" => edges,
-          "skipped" => skipped.sort,
+          "skipped" => (files - unreadable - mains.keys).sort,
+          "unreadable" => unreadable,
           "foreign" => foreign.sort_by { |name, count| [-count, name] }
         }
       end
@@ -53,29 +57,31 @@ module Uml
                 .sort
       end
 
-      def build_classes(parsed, declarations)
+      def build_classes(parsed, declarations, mains)
         classes = {}
         aliases = {}
-        skipped = []
-        parsed.each do |file, result|
-          declared = declarations[file][:declared]
-          if declared.empty?
-            skipped << file
-            next
-          end
-          main = main_constant(file, declared)
-          (declared.map { |entry| entry[:id] } + declarations[file][:secondary]).each { |id| aliases[id] = main[:id] }
+        mains.each do |file, main|
+          result = parsed[file]
+          own_ids(declarations[file]).each { |id| aliases[id] = main[:id] }
+          ops = Operations.new(result.value, file).collect
           if classes.key?(main[:id])
-            classes[main[:id]]["files"] << file
+            owner = classes[main[:id]]
+            owner["files"] << file
+            owner["ops"].concat(ops)
+            owner["parse_errors"].concat(parse_errors(result).map { |error| "#{file} #{error}" })
           else
             classes[main[:id]] = {
               "id" => main[:id], "file" => file, "files" => [file], "kind_folder" => kind_folder(file),
-              "stereotype" => main[:stereotype], "parse_errors" => parse_errors(result)
+              "stereotype" => main[:stereotype], "ops" => ops, "parse_errors" => parse_errors(result)
             }
           end
         end
         classes.each_key { |id| aliases[id] = id }
-        [classes, aliases, skipped]
+        [classes, aliases]
+      end
+
+      def own_ids(found)
+        found[:declared].map { |entry| entry[:id] } + found[:secondary]
       end
 
       def main_constant(file, declared)
@@ -100,17 +106,13 @@ module Uml
         result.errors.map { |error| "line #{error.location.start_line}: #{error.message}" }
       end
 
-      def build_edges(parsed, declarations, aliases, resolver)
+      def build_edges(parsed, declarations, mains, aliases, resolver)
         pairs = Set.new
         foreign = Hash.new(0)
-        parsed.each do |file, result|
-          declared = declarations[file][:declared]
-          next if declared.empty?
-
-          own = declared.map { |entry| entry[:id] } + declarations[file][:secondary]
-          main = main_constant(file, declared)[:id]
-          References.new(result.value).collect.each do |reference|
-            from = own.include?(reference[:owner]) ? aliases[reference[:owner]] : main
+        mains.each do |file, main|
+          own = own_ids(declarations[file])
+          References.new(parsed[file].value).collect.each do |reference|
+            from = own.include?(reference[:owner]) ? aliases[reference[:owner]] : main[:id]
             found = resolver.resolve(reference[:name], nesting: reference[:nesting], enclosing: reference[:nesting].last)
             if found.nil?
               foreign[reference[:name].delete_prefix("::").split("::").first] += 1
@@ -143,7 +145,7 @@ module Uml
           statements.each do |node|
             case node
             when Prism::ClassNode, Prism::ModuleNode then declare_scope(node, nesting)
-            when Prism::ConstantWriteNode then declare_constant(node, nesting)
+            when Prism::ConstantWriteNode, Prism::ConstantPathWriteNode then declare_constant(node, nesting)
             end
           end
         end
@@ -165,10 +167,13 @@ module Uml
         end
 
         def declare_constant(node, nesting)
-          full = Scanner.qualify(node.name.to_s, nesting)
+          written = node.is_a?(Prism::ConstantWriteNode) ? node.name.to_s : Scanner.constant_name(node.target)
+          return if written.nil?
+
+          full = Scanner.qualify(written, nesting)
           if data_call?(node.value)
             @declared << { id: full, stereotype: "data" }
-          elsif !nesting.empty?
+          elsif !nesting.empty? || full.include?("::")
             @secondary << full
           end
         end
@@ -176,7 +181,7 @@ module Uml
         def wrapper?(body)
           !body.empty? && body.all? do |child|
             child.is_a?(Prism::ClassNode) || child.is_a?(Prism::ModuleNode) ||
-              (child.is_a?(Prism::ConstantWriteNode) && data_call?(child.value))
+              ((child.is_a?(Prism::ConstantWriteNode) || child.is_a?(Prism::ConstantPathWriteNode)) && data_call?(child.value))
           end
         end
 
@@ -225,6 +230,10 @@ module Uml
         def visit_constant_path_node(node)
           name = Scanner.constant_name(node)
           name.nil? ? super : record(name)
+        end
+
+        def visit_constant_path_write_node(node)
+          node.value.accept(self)
         end
 
         private
