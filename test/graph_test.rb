@@ -138,7 +138,7 @@ module Uml
         pricing = graph["classes"].find { |entry| entry["id"] == "Pricing" }
         assert_equal [1.0, 1.0, 10], [pricing["ops"].first["coverage"], pricing["ops"].first["crap"], pricing["crap"]["grade"]]
         services = graph["views"]["root"]["nodes"].find { |node| node["id"] == "folder:services" }
-        assert services.key?("c_grade")
+        assert_equal 10, services["c_grade"]
         assert_equal 1, graph["summary"]["coverage"]["files"]
         assert_operator graph["summary"]["coverage"]["scanned"], :>, 1
       end
