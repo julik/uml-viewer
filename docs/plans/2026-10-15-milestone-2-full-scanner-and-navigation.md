@@ -51,7 +51,7 @@ These are rulings, recorded here so a reviewer can reject them.
 ## Review Focus
 
 1. A project with no class left (an empty `app/`, or every class omitted). Expected: the root view is empty, the page draws an empty diagram with the title crumb, and nothing raises. Tests in Task 6 (`Views` with no classes) and Task 9 (the first screen of an empty project).
-2. A source file is deleted between the glob and the `stat` of the input poll (or is a dangling symlink). Expected: no exception, the poll thread keeps running, the next poll sees the change and rescans. Test in Task 8 (`Graph.inputs` with a dangling symlink).
+2. A source file is deleted between the glob and the `stat` of the input poll, or is a dangling symlink. Expected: no exception, the poll thread keeps running, the next poll sees the change and rescans, and the scan lists the unreadable file instead of failing. Tests in Task 3 (the scan of a dangling symlink), Task 5 (the summary warning) and Task 8 (`Graph.inputs` with a dangling symlink).
 3. `session.json` names a view that no longer exists (the namespace was omitted or renamed). Expected: the page opens the nearest view on the saved path that still exists, not a blank screen. Test in Task 9.
 4. A reopened class across two files. Expected: the ops of both files, each with its own `file`, so the source panel opens the right file; the card lists both files; a parse error in the second file shows with that file's path. Test in Task 3.
 5. `class_name: "::User"` inside a compact model whose namespace also has a `User`. Expected: the leading `::` forces the top-level `User`. Test in Task 4.
@@ -81,6 +81,39 @@ smoke on a folder that is not git        project fails                          
                                                                                    check that git status stays the same"
 expect.yml is not a list                 project fails                             "<name>: expect.yml must be a list of edges"      smoke_test (Task 7)
 ```
+
+## Engineering review record (2026-10-16)
+
+Method: the eng-review skill, target B (this plan), four passes, plus an independent second reviewer (another model) that applied every task to a scratch copy of the repository and ran the tests. 10 findings are the second reviewer's, 6 are mine. The user accepted the recommendation on every finding. The plan text above contains each fix.
+
+```
+#   Sev  Finding                                                          Fix (task)
+--  ---  -------                                                          ----------
+1   P1   the input poll took its first snapshot inside the thread; a      first snapshot in Server#start (8)
+         change right after start was missed (3 server tests timed out)
+2   P1   "unknown folder" fired for lib with only scripts or tasks        warn only for a folder not on disk;
+                                                                          the scan reports "folders" (4, 5)
+3   P1   Graph.inputs tests compared /var with the realpath /private/var  keys from workspace.root; assert the
+                                                                          symlink key is present (8)
+4   P1   ferrum Node#[] returns the SVG property (a Hash)                 node.attribute in the tests (9)
+5   P1   the hover test picked the wrong red arrow                        data-from/data-to on hit paths (10)
+6   P2   no measurement of the largest view on the large app              measurement step; over 3 s the user
+                                                                          decides before Task 10 (9)
+7   P2   a double-click during a layout was ignored silently              queue the last requested view (9)
+8   P2   no test that belongs_to/has_one keep a final s                   association test (4)
+9   P3   a dangling symlink made every rescan fail                        the scan lists unreadable files and
+                                                                          a summary warning (3, 5)
+10  P3   smoke lost "no such project folder" for a missing path           folder check first (7)
+11  P3   save_session repeated the 413 checks                             read_body helper (8)
+12  P3   a corrupt session.json showed "server not reachable"             ignore a bad session (9)
+13  P3   the two-project smoke test could not tell the projects apart     distinct folder names (7)
+14  P3   the proposal branch of PUT /session had no test                  one assertion (8)
+15  P3   a commands test was called red but passes before the change      corrected red list (6)
+16  P3   the tokenless page could be framed (reviewers disagreed on       X-Frame-Options and frame-ancestors (8)
+         the risk; the user chose the hardening)
+```
+
+Not in scope: a Web Worker for ELK (decided after the measurement in Task 9); red `inheritance`/`implements` on the real apps (none exist; the fixture covers the rule); a size cap on `/source` (it serves scanned `.rb` files only).
 
 ## File structure
 
@@ -344,7 +377,8 @@ git commit -m "feat: compute the cyclomatic complexity of a method from its Pris
   - `Uml::Viewer::Operations.new(program, file).collect -> [op]`, where `program` is a `Prism::ProgramNode` and each op is `{"name" => String, "visibility" => "public"|"private"|"protected", "cc" => Integer, "file" => String, "line_start" => Integer, "line_end" => Integer}`.
   - Each scanned class gains `"ops" => [op]`. A reopened class has the ops of all its files, first file first.
   - A parse error of a later file of a reopened class reads `"<file> line N: <message>"`. The first file keeps `"line N: <message>"`.
-  - `Foo::BAR = 1` (a `ConstantPathWriteNode`) is a secondary constant of its file. `Scanner.new(root, skip: ["app/x/"])` drops `app/x` (trailing slash ignored).
+  - `Foo::BAR = 1` (a `ConstantPathWriteNode`) is a secondary constant of its file.
+  - A file the scan cannot read (a dangling symlink, no read permission) is listed under `"unreadable"` and is not parsed; the rest of the project still scans. `Scanner.new(root, skip: ["app/x/"])` drops `app/x` (trailing slash ignored).
 
 - [ ] **Step 1: Write the fixture file.** `test/fixtures/projects/rails_shapes/app/services/reports/exporter.rb`, exactly these 28 lines (line numbers matter):
 
@@ -487,6 +521,14 @@ Add these tests to `test/scanner_test.rb` (inside the class, after the last test
         assert_nil scan["classes"].find { |entry| entry["id"] == "OrdersController" }
       end
 
+      def test_a_dangling_symlink_is_listed_as_unreadable_and_the_rest_still_scans
+        root = project("app/models/order.rb" => "class Order\nend\n")
+        File.symlink(File.join(root, "app/models/missing.rb"), File.join(root, "app/models/ghost.rb"))
+        result = Scanner.new(root).scan
+        assert_equal [["app/models/ghost.rb"], ["Order"]], [result["unreadable"], result["classes"].map { |entry| entry["id"] }]
+        assert_empty result["skipped"]
+      end
+
       def test_a_constant_path_write_is_a_secondary_constant_of_its_file
         root = project(
           "app/services/billing/limits.rb" => "module Billing\n  class Limits\n  end\nend\nBilling::DEFAULT = 5\n",
@@ -504,7 +546,7 @@ Run: `bundle exec ruby -Itest -Ilib test/operations_test.rb`
 Expected: 11 errors, `NameError: uninitialized constant Uml::Viewer::Operations`.
 
 Run: `bundle exec ruby -Itest -Ilib test/scanner_test.rb`
-Expected: the ops tests fail with `undefined method 'map' for nil` (no `ops` key); the reopened-class test fails the same way; the trailing-slash test fails (`OrdersController` is still there); the constant-path test fails (no edge `Invoice -> Billing::Limits`).
+Expected: the ops tests fail with `undefined method 'map' for nil` (no `ops` key); the reopened-class test fails the same way; the trailing-slash test fails (`OrdersController` is still there); the symlink test raises `Errno::ENOENT` from `Prism.parse_file`; the constant-path test fails (no edge `Invoice -> Billing::Limits`).
 
 - [ ] **Step 4: Write `lib/uml/viewer/operations.rb`**
 
@@ -631,7 +673,8 @@ Expected: `11 runs, 11 assertions, 0 failures`.
 ```ruby
       def scan
         files = ruby_files
-        parsed = files.to_h { |file| [file, Prism.parse_file(File.join(@root, file))] }
+        unreadable = files.reject { |file| File.file?(File.join(@root, file)) && File.readable?(File.join(@root, file)) }
+        parsed = (files - unreadable).to_h { |file| [file, Prism.parse_file(File.join(@root, file))] }
         declarations = parsed.to_h { |file, result| [file, Declarations.new(result.value).collect] }
         mains = declarations.reject { |_, found| found[:declared].empty? }
                             .to_h { |file, found| [file, main_constant(file, found[:declared])] }
@@ -643,7 +686,8 @@ Expected: `11 runs, 11 assertions, 0 failures`.
           "classes" => classes.values.sort_by { |entry| entry["id"] },
           "namespaces" => namespaces.to_a.sort,
           "edges" => edges,
-          "skipped" => (files - mains.keys).sort,
+          "skipped" => (files - unreadable - mains.keys).sort,
+          "unreadable" => unreadable,
           "foreign" => foreign.sort_by { |name, count| [-count, name] }
         }
       end
@@ -763,6 +807,7 @@ git commit -m "feat: list each class's ops with visibility, cc, file and lines, 
   - `Uml::Viewer::Inflector.singularize(String) -> String`, `Uml::Viewer::Inflector.camelize(String) -> String`.
   - `Uml::Viewer::Scanner::KINDS = %w[inheritance implements association dependency]` (strongest first).
   - Each scan edge is `{"from", "to", "kind", "kinds"}`: `kinds` lists every kind found for the pair in `KINDS` order, and `kind` is `kinds.first`.
+  - The scan gains `"folders" => [String]`: the kind folders that exist on disk (each `app/<name>` folder that the scan does not skip, plus `lib` when `lib/` or `app/lib` exists), sorted.
   - The scan gains `"foreign_edges" => [{"from", "to" => <first segment>, "kind", "kinds"}]` (every unresolved non-association reference, one per pair), `"unresolved" => Integer` and `"polymorphic" => Integer`.
 
 - [ ] **Step 1: Write the failing tests.** `test/inflector_test.rb`:
@@ -840,6 +885,17 @@ In `test/scanner_test.rb`, replace `test_a_superclass_is_a_dependency_edge_in_mi
         end
       end
 
+      def test_has_one_and_belongs_to_keep_a_final_s_and_habtm_singularizes
+        root = project(
+          "app/models/address.rb" => "class Address\nend\n",
+          "app/models/status.rb" => "class Status\nend\n",
+          "app/models/category.rb" => "class Category\nend\n",
+          "app/models/order.rb" => "class Order\n  has_one :address\n  belongs_to :status\n  has_and_belongs_to_many :categories\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert_equal %w[Address Category Status], result["edges"].select { |edge| edge["from"] == "Order" }.map { |edge| edge["to"] }
+      end
+
       def test_through_with_source_takes_the_target_from_source
         root = project(
           "app/models/user.rb" => "class User\nend\n",
@@ -881,6 +937,10 @@ In `test/scanner_test.rb`, replace `test_a_superclass_is_a_dependency_edge_in_mi
         %w[Trackable Auditing Logging].each do |target|
           assert_equal ["implements"], found_edge("Order", target, in_scan: result)&.fetch("kinds"), "Order -> #{target}"
         end
+      end
+
+      def test_folders_lists_the_kind_folders_that_exist_on_disk
+        assert_equal %w[controllers lib models services], scan["folders"]
       end
 
       def test_an_unresolved_reference_gives_a_foreign_edge_to_its_first_segment
@@ -992,6 +1052,14 @@ In `lib/uml/viewer.rb`, add `require_relative "viewer/inflector"` directly after
         [merge_kinds(kinds), merge_kinds(foreign_kinds), foreign, counts]
       end
 
+      def existing_folders
+        skipped_app = SKIPPED_FOLDERS.select { |folder| folder.start_with?("app/") }
+        app = Dir.glob("app/*/", base: @root).map { |dir| dir.chomp("/") }.reject { |dir| skipped_app.include?(dir) }
+                 .map { |dir| dir.delete_prefix("app/") }
+        lib = File.directory?(File.join(@root, "lib")) || app.include?("lib")
+        ((app - ["lib"]) + (lib ? ["lib"] : [])).sort
+      end
+
       def merge_kinds(kinds)
         kinds.sort.map do |(from, to), found|
           ordered = KINDS.select { |kind| found.include?(kind) }
@@ -1008,7 +1076,9 @@ In `lib/uml/viewer.rb`, add `require_relative "viewer/inflector"` directly after
           "namespaces" => namespaces.to_a.sort,
           "edges" => edges,
           "foreign_edges" => foreign_edges,
-          "skipped" => (files - mains.keys).sort,
+          "skipped" => (files - unreadable - mains.keys).sort,
+          "unreadable" => unreadable,
+          "folders" => existing_folders,
           "foreign" => foreign.sort_by { |name, count| [-count, name] },
           "unresolved" => counts["unresolved"],
           "polymorphic" => counts["polymorphic"]
@@ -1166,7 +1236,7 @@ git commit -m "feat: scan inheritance, implements and association edges, count u
 - Produces:
   - An edge is violating when both ends have a level, the level of `from` is lower than the level of `to`, and one of its `kinds` is not `association`.
   - `edge_kinds` sets both `kind` and `kinds` (`[kind]`) of the pair.
-  - `Policy.apply` also returns `"foreign_edges"` (the scan's foreign edges whose `to` is in `foreign:` and whose `from` is kept) and `"warnings"` (`"levels: unknown folder <name>"` for each folder in `levels:` that no scanned class has).
+  - `Policy.apply` also returns `"foreign_edges"` (the scan's foreign edges whose `to` is in `foreign:` and whose `from` is kept) and `"warnings"` (`"levels: unknown folder <name>"` for each folder in `levels:` that is not in the scan's `folders`, so a `lib/` with only scripts or tasks gives no warning).
   - `graph["summary"]` gains `"unresolved"`, `"polymorphic"` and `"warnings"`.
   - `PolicyFile.load` raises `Invalid` with `policy.yml: edge_kinds maps "From -> To" to one of inheritance, implements, association, dependency` for a bad key or value, and `policy.yml: title must be text` for a title that is not a string.
 
@@ -1178,7 +1248,8 @@ git commit -m "feat: scan inheritance, implements and association edges, count u
           "classes" => classes.map { |id, folder| { "id" => id, "kind_folder" => folder, "file" => "x.rb", "files" => ["x.rb"], "stereotype" => "class", "ops" => [], "parse_errors" => [] } },
           "edges" => edges.map { |from, to, kinds = ["dependency"]| { "from" => from, "to" => to, "kind" => kinds.first, "kinds" => kinds } },
           "foreign_edges" => foreign_edges.map { |from, to| { "from" => from, "to" => to, "kind" => "dependency", "kinds" => ["dependency"] } },
-          "namespaces" => namespaces
+          "namespaces" => namespaces,
+          "folders" => classes.values.uniq
         }
       end
 ```
@@ -1214,8 +1285,9 @@ Add:
         assert_equal [["Order", "Faraday"]], graph["foreign_edges"].map { |edge| edge.values_at("from", "to") }
       end
 
-      def test_a_level_folder_that_no_class_has_gives_a_warning
-        graph = apply(scan({ "Order" => "models" }, []), "levels" => [["models"], ["workers"]])
+      def test_a_level_folder_that_does_not_exist_on_disk_gives_a_warning
+        input = scan({ "Order" => "models" }, []).merge("folders" => %w[lib models])
+        graph = apply(input, "levels" => [["models"], ["lib"], ["workers"]])
         assert_equal ["levels: unknown folder workers"], graph["warnings"]
       end
 ```
@@ -1251,6 +1323,14 @@ Add to `test/policy_file_test.rb` (the file's helper `write(text)` writes a temp
 Add to `test/graph_test.rb`:
 
 ```ruby
+      def test_an_unreadable_file_shows_as_a_summary_warning
+        project = project_copy
+        File.symlink(File.join(project, "app/models/missing.rb"), File.join(project, "app/models/ghost.rb"))
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        assert_includes Graph.build(workspace)["summary"]["warnings"], "unreadable file: app/models/ghost.rb"
+      end
+
       def test_the_summary_counts_associations_and_lists_warnings
         summary = graph["summary"]
         assert_equal [0, 0, []], summary.values_at("unresolved", "polymorphic", "warnings")
@@ -1281,7 +1361,7 @@ Expected: `test_an_association_alone_is_never_violating_across_levels` passes al
 
 ```ruby
           "foreign_edges" => scan["foreign_edges"].select { |edge| policy["foreign"].include?(edge["to"]) && by_id.key?(edge["from"]) },
-          "warnings" => (policy["levels"].flatten.uniq - scan["classes"].map { |entry| entry["kind_folder"] }).map { |name| "levels: unknown folder #{name}" }
+          "warnings" => (policy["levels"].flatten.uniq - scan["folders"]).map { |name| "levels: unknown folder #{name}" }
 ```
 
 - [ ] **Step 4: Validate the policy file.** In `lib/uml/viewer/policy_file.rb`, in `validate`, after the `edge_kinds must be a mapping` check, add:
@@ -1303,7 +1383,7 @@ Expected: `test_an_association_alone_is_never_violating_across_levels` passes al
           "foreign" => scan["foreign"].reject { |name, _| policy["foreign"].include?(name) }.first(20),
           "unresolved" => scan["unresolved"],
           "polymorphic" => scan["polymorphic"],
-          "warnings" => applied["warnings"]
+          "warnings" => applied["warnings"] + scan["unreadable"].map { |file| "unreadable file: #{file}" }
         }
       end
 ```
@@ -1487,7 +1567,7 @@ Run: `bundle exec ruby -Itest -Ilib test/views_test.rb`
 Expected: 9 errors, `uninitialized constant Uml::Viewer::Views`.
 
 Run: `bundle exec rake test`
-Expected: the policy, graph, commands and server tests fail on the missing `views` and on the ids hash.
+Expected: the policy, graph and server tests fail on the missing `views`. In `test/commands_test.rb`, `test_omit_on_a_kind_box_is_accepted` and `test_explain_on_a_class_is_accepted` fail, because `ids.include?` on the new Hash finds no id. `test_a_box_id_sent_with_kind_class_is_refused` passes already for that same reason; it pins the rule for Step 5 and is not a red proof.
 
 - [ ] **Step 3: Write `lib/uml/viewer/views.rb`**
 
@@ -1701,14 +1781,25 @@ and add:
                      Smoke.run([project], out: StringIO.new)
       end
 
+      def git_project_named(name)
+        project = git_project
+        renamed = File.join(File.dirname(project), name)
+        File.rename(project, renamed)
+        renamed
+      end
+
       def test_two_projects_report_apart
-        first = git_project
-        second = git_project
+        first = git_project_named("shop_a")
+        second = git_project_named("shop_b")
         File.write(Workspace.new(second).path("expect.yml"), YAML.dump([{ "from" => "Order", "to" => "Ghost", "kind" => "dependency", "violating" => false }]))
         out = StringIO.new
         failures = Smoke.run([first, second], out: out)
-        assert_equal ["#{File.basename(second)}: missing edge Order -> Ghost (dependency)"], failures
-        assert_equal 2, out.string.lines.count { |line| line.match?(/: \d+ classes, \d+ violating$/) }
+        assert_equal ["shop_b: missing edge Order -> Ghost (dependency)"], failures
+        assert_equal %w[shop_a shop_b], out.string.lines.grep(/: \d+ classes, \d+ violating$/).map { |line| line.split(":").first }
+      end
+
+      def test_a_folder_that_does_not_exist_keeps_the_no_such_folder_message
+        assert_equal ["shop: no such project folder: /no/such/shop"], Smoke.run(["/no/such/shop"], out: StringIO.new)
       end
 
       def test_a_scan_that_raises_still_checks_git_status
@@ -1770,6 +1861,8 @@ module Uml
       def self.run(paths, out:, &between)
         paths.flat_map do |path|
           name = File.basename(path)
+          next ["#{name}: no such project folder: #{path}"] unless File.directory?(path)
+
           before, repository = git_status(path)
           next ["#{name}: not a git repository, so smoke cannot check that git status stays the same"] unless repository
 
@@ -1860,6 +1953,11 @@ git commit -m "feat: print association counts and warnings in scan, and make smo
         assert_equal ["200", "text/html; charset=utf-8"], [response.code, response["Content-Type"]]
         refute_includes response.body, @server.token
       end
+
+      def test_the_page_refuses_to_be_framed
+        response = request(:get, "/", token: nil)
+        assert_equal ["DENY", "frame-ancestors 'none'"], [response["X-Frame-Options"], response["Content-Security-Policy"]]
+      end
 ```
 
 Add:
@@ -1901,6 +1999,7 @@ Add:
         assert_equal "drill must be a list of ids", JSON.parse(request(:put, "/session", body: '{"drill":"root"}').body)["error"]
         assert_equal "zoom must be a number", JSON.parse(request(:put, "/session", body: '{"zoom":"big"}').body)["error"]
         assert_equal "scroll must hold x and y numbers", JSON.parse(request(:put, "/session", body: '{"scroll":{"x":1}}').body)["error"]
+        assert_equal "proposal must be an id or null", JSON.parse(request(:put, "/session", body: '{"proposal":3}').body)["error"]
         assert_equal "session must be a JSON object", JSON.parse(request(:put, "/session", body: "[1]").body)["error"]
         assert_equal ["400", "body is not JSON"], request(:put, "/session", body: "{").then { |r| [r.code, JSON.parse(r.body)["error"]] }
         assert_equal "413", request(:put, "/session", body: JSON.generate("drill" => ["x" * 5000])).code
@@ -1942,9 +2041,11 @@ Add to `test/graph_test.rb`:
         Graph.prepare(workspace)
         File.symlink(File.join(project, "app/models/missing.rb"), File.join(project, "app/models/ghost.rb"))
         inputs = Graph.inputs(workspace)
+        ghost = File.join(workspace.root, "app/models/ghost.rb")
         assert_includes inputs.keys, workspace.path("policy.yml")
-        assert_kind_of Float, inputs[File.join(project, "app/models/order.rb")]
-        assert_nil inputs[File.join(project, "app/models/ghost.rb")]
+        assert_kind_of Float, inputs[File.join(workspace.root, "app/models/order.rb")]
+        assert inputs.key?(ghost), "the dangling symlink is not listed"
+        assert_nil inputs[ghost]
       end
 
       def test_inputs_fall_back_to_the_default_sources_when_the_policy_is_invalid
@@ -1952,14 +2053,14 @@ Add to `test/graph_test.rb`:
         workspace = Workspace.new(project)
         Graph.prepare(workspace)
         workspace.write_atomic("policy.yml", "levels: [\n")
-        assert_includes Graph.inputs(workspace).keys, File.join(project, "app/models/order.rb")
+        assert_includes Graph.inputs(workspace).keys, File.join(workspace.root, "app/models/order.rb")
       end
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `bundle exec ruby -Itest -Ilib test/server_test.rb && bundle exec ruby -Itest -Ilib test/graph_test.rb -n /inputs/`
-Expected: the page test gets 403; `/source` and `/session` get 404 `not found`; the new-file test times out; the watch-error test times out; `Graph.inputs` is undefined.
+Expected: the page test gets 403; the frame test finds no frame headers; `/source` and `/session` get 404 `not found`; the new-file test times out; the watch-error test times out; `Graph.inputs` is undefined.
 
 - [ ] **Step 3: Add `Graph.inputs`.** In `lib/uml/viewer/graph.rb`:
 
@@ -1989,6 +2090,8 @@ Expected: the page test gets 403; `/source` and `/session` get 404 `not found`; 
       def page(res)
         res.status = 200
         res["Content-Type"] = "text/html; charset=utf-8"
+        res["X-Frame-Options"] = "DENY"
+        res["Content-Security-Policy"] = "frame-ancestors 'none'"
         res.body = File.read(File.join(WEB, "index.html"))
       end
 ```
@@ -2021,10 +2124,8 @@ Expected: the page test gets 403; `/source` and `/session` get 404 `not found`; 
       end
 
       def save_session(req, res)
-        return respond(res, 413, "error" => "too large") if req["Content-Length"].to_i > MAX_BODY
-
-        text = read_capped(req)
-        return respond(res, 413, "error" => "too large") if text.bytesize > MAX_BODY
+        text = read_body(req)
+        return respond(res, 413, "error" => "too large") if text.nil?
 
         body = JSON.parse(text)
         reason = session_problem(body)
@@ -2054,11 +2155,21 @@ Expected: the page test gets 403; `/source` and `/session` get 404 `not found`; 
 
 Move `SESSION_KEYS` up next to `MAX_BODY` with the other constants.
 
-  4. Replace the policy poll with an input poll. In `start`, change `Thread.new { watch_policy }` to `@watcher = Thread.new { watch_inputs }`. In `shutdown`, after `@stopping = true`, add `@watcher&.join(@poll + 1)`. Replace `watch_policy` and `policy_mtime` with:
+Add `read_body`, and use it in `create_command` too, in place of its two 413 checks (`text = read_body(req)` and `return respond(res, 413, "error" => "too large") if text.nil?`). The existing 4 KB tests of `POST /commands` cover the change:
 
 ```ruby
-      def watch_inputs
-        last = Graph.inputs(@workspace)
+      def read_body(req)
+        return nil if req["Content-Length"].to_i > MAX_BODY
+
+        text = read_capped(req)
+        text.bytesize > MAX_BODY ? nil : text
+      end
+```
+
+  4. Replace the policy poll with an input poll. In `start`, change `Thread.new { watch_policy }` to `baseline = read_inputs || {}` followed by `@watcher = Thread.new { watch_inputs(baseline) }`. The first snapshot must be taken in `start`, before the thread: a snapshot inside the thread can already hold a change made right after `start` returns, and then no rescan follows. In `shutdown`, after `@stopping = true`, add `@watcher&.join(@poll + 1)`. Replace `watch_policy` and `policy_mtime` with:
+
+```ruby
+      def watch_inputs(last)
         until @stopping
           sleep @poll
           current = read_inputs
@@ -2081,8 +2192,6 @@ Move `SESSION_KEYS` up next to `MAX_BODY` with the other constants.
 
   5. In `version`, change `"error" => @rescanner.error` to `"error" => @watch_error || @rescanner.error`.
   6. Add `require "set"` at the top of the file.
-
-The first `Graph.inputs` call in `watch_inputs` can also raise. Wrap it: `last = read_inputs || {}`.
 
 - [ ] **Step 5: Run the tests**
 
@@ -2135,7 +2244,7 @@ git commit -m "feat: serve source slices and the stored view, serve the page wit
       end
 
       def box_y(id)
-        @browser.at_css(%(g.box[data-id="#{id}"]))["transform"][/translate\([\d.]+,([\d.]+)\)/, 1].to_f
+        @browser.at_css(%(g.box[data-id="#{id}"])).attribute("transform")[/translate\([\d.]+,([\d.]+)\)/, 1].to_f
       end
 ```
 
@@ -2206,11 +2315,11 @@ git commit -m "feat: serve source slices and the stored view, serve the page wit
       def test_ctrl_plus_zooms_in_and_ctrl_zero_resets
         @browser.goto(@server.url)
         wait_for('g.box[data-id="folder:models"]')
-        width = @browser.at_css("#diagram")["width"].to_f
+        width = @browser.at_css("#diagram").attribute("width").to_f
         press("=", ctrl: true)
-        wait_until(-> { "the diagram did not zoom in" }) { (@browser.at_css("#diagram")["width"].to_f - width * 1.25).abs < 0.5 }
+        wait_until(-> { "the diagram did not zoom in" }) { (@browser.at_css("#diagram").attribute("width").to_f - width * 1.25).abs < 0.5 }
         press("0", ctrl: true)
-        wait_until(-> { "the zoom did not reset" }) { (@browser.at_css("#diagram")["width"].to_f - width).abs < 0.5 }
+        wait_until(-> { "the zoom did not reset" }) { (@browser.at_css("#diagram").attribute("width").to_f - width).abs < 0.5 }
       end
 
       def test_a_box_without_a_level_sits_above_the_boxes_with_levels
@@ -2236,6 +2345,37 @@ git commit -m "feat: serve source slices and the stored view, serve the page wit
         wait_until(-> { "the title crumb never showed" }) { crumbs == ["extra"] }
         assert_equal "", @browser.at_css("#banner").text
         assert_empty @browser.css("g.box")
+      end
+
+      def slow_down_layouts(milliseconds)
+        @browser.evaluate(<<~JS)
+          (() => {
+            window.layouts = 0;
+            const layout = ELK.prototype.layout;
+            ELK.prototype.layout = function (...args) {
+              window.layouts += 1;
+              return new Promise((resolve) => setTimeout(resolve, #{milliseconds})).then(() => layout.apply(this, args));
+            };
+          })()
+        JS
+      end
+
+      def test_a_double_click_during_a_slow_layout_opens_the_view_when_the_layout_ends
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="Reports"]')
+        slow_down_layouts(2000)
+        Graph.build(@workspace)
+        wait_until(-> { "the changed graph never started a layout" }) { @browser.evaluate("window.layouts").positive? }
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def test_a_corrupt_saved_view_opens_the_first_screen_without_an_error
+        @workspace.write_atomic("session.json", "{")
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal "", @browser.at_css("#banner").text
       end
 
       def test_a_failed_graph_fetch_says_server_not_reachable
@@ -2326,6 +2466,7 @@ Expected: the new tests fail: no `#crumbs`, no `g.box.class`, no zoom, the reloa
   let size = { width: 0, height: 0 };
   let pendingScroll = null;
   let saveTimer = null;
+  let pendingView = null;
 
   const api = (path, options = {}) =>
     fetch(path, { ...options, headers: { "X-UML-Token": token, "Content-Type": "application/json", ...(options.headers || {}) } });
@@ -2471,6 +2612,11 @@ Expected: the new tests fail: no `#crumbs`, no `g.box.class`, no zoom, the reloa
       drawing = false;
     }
     showBanner();
+    if (pendingView) {
+      const id = pendingView;
+      pendingView = null;
+      openView(id);
+    }
   }
 
   async function loadGraph() {
@@ -2516,7 +2662,11 @@ Expected: the new tests fail: no `#crumbs`, no `g.box.class`, no zoom, the reloa
   }
 
   const openView = (id) => {
-    if (!graph || !graph.views[id] || drawing) return;
+    if (!graph || !graph.views[id]) return;
+    if (drawing) {
+      pendingView = id;
+      return;
+    }
     drill = chain(id);
     render();
     saveSession();
@@ -2600,7 +2750,7 @@ Expected: the new tests fail: no `#crumbs`, no `g.box.class`, no zoom, the reloa
     if (!token) return expired();
     try {
       const response = await api("/session");
-      if (response.ok) restore(await response.json());
+      if (response.ok) restore(await response.json().catch(() => ({})));
     } catch (error) {
       banner.textContent = "server not reachable";
     }
@@ -2622,7 +2772,43 @@ Expected: all pass, the milestone 1 browser tests included.
 Run: `bundle exec rake test`
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+In the existing `test_a_poll_during_a_slow_layout_starts_no_second_layout`, replace the inline `ELK.prototype.layout` patch with `slow_down_layouts(2500)`, so the patch lives in one helper.
+
+- [ ] **Step 6: Measure the largest view of the large app.** This is a measurement, not a test, and it writes nothing into the app. Save this script in the scratchpad as `measure_layout.rb`, and run it from the repository with `bundle exec ruby <scratchpad>/measure_layout.rb <large app path>`, so ferrum loads. It opens the largest box of the first screen:
+
+```ruby
+$LOAD_PATH.unshift File.expand_path("~/software/uml-viewer/lib")
+require "uml/viewer"
+require "ferrum"
+workspace = Uml::Viewer::Workspace.new(ARGV.fetch(0))
+Uml::Viewer::Graph.prepare(workspace)
+graph = Uml::Viewer::Graph.build(workspace)
+view_id, view = graph["views"].select { |_, entry| entry["parent"] == "root" }.max_by { |_, entry| entry["nodes"].size }
+server = Uml::Viewer::Server.new(workspace).start
+Thread.new { server.run }
+browser = Ferrum::Browser.new(headless: true, timeout: 120)
+browser.goto(server.url)
+sleep 0.1 until browser.at_css("g.box")
+browser.evaluate(<<~JS)
+  (() => {
+    const layout = ELK.prototype.layout;
+    ELK.prototype.layout = function (...args) {
+      const started = performance.now();
+      return layout.apply(this, args).then((result) => { window.layoutMs = performance.now() - started; return result; });
+    };
+  })()
+JS
+browser.evaluate("window.layoutMs = null")
+browser.at_css(%(g.box[data-id="#{view_id}"] text.title)).click(mode: :double)
+sleep 0.1 until browser.evaluate("window.layoutMs")
+puts "#{view_id}: #{view['nodes'].size} nodes, #{view['arrows'].size} arrows, layout #{browser.evaluate('window.layoutMs').round} ms, graph.json #{File.size(workspace.path('graph.json')) / 1024} KB"
+browser.quit
+server.shutdown
+```
+
+Expected: one line with the largest view, its size, the layout time and the size of `graph.json`. Record the line in the SDD ledger and in the report to the user. When the layout takes more than 3000 ms, stop before Task 10: the user decides between a cap (draw N class nodes, list the rest as "+N more") and a Web Worker for the layout.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add lib/uml/viewer/web/index.html lib/uml/viewer/web/app.js test/browser_test.rb
@@ -2642,7 +2828,7 @@ git commit -m "feat: drill into boxes with crumbs and Escape, zoom with Ctrl, an
 - Produces:
   - Double-click on a class member line or a class node opens `#card`: the id, `«stereotype» · <kind folder> · level N` (or `no level`), one `p.file` per file, a `p.error` per parse error under `h3.error`, one `li.op` per op (`+` public, `-` private, `#` protected, then the name and `cc N`, with `data-file` and `data-line`), and the note "static scan: dynamic references (constantize, send) are not seen".
   - A click on `li.op` opens `#source` with the header `<file>:<line>` and one `div.line` per line; the line of the op has the class `current` and scrolls into view. A refused file shows the server reason.
-  - Hovering an arrow shows `#popup` with one `div.pair` per pair (`<from> -> <to> (<kind>)`), class `violating` on violating pairs. Each arrow has an invisible `path.hit` (10 px wide) on top of the visible path.
+  - Hovering an arrow shows `#popup` with one `div.pair` per pair (`<from> -> <to> (<kind>)`), class `violating` on violating pairs. Each arrow has an invisible `path.hit` (10 px wide) on top of the visible path, with `data-index`, `data-from` and `data-to`.
   - `#regen` posts `/scans`; a failure shows a toast.
   - The context menu stays inside the window.
   - `Escape` closes the source panel first, then the card, then goes up one view.
@@ -2719,8 +2905,9 @@ git commit -m "feat: drill into boxes with crumbs and Escape, zoom with Ctrl, an
 
       def test_hovering_a_red_arrow_lists_its_pairs_with_the_red_ones_marked
         @browser.goto(@server.url)
-        wait_for("path.hit.violating")
-        @browser.evaluate('document.querySelector("path.hit.violating").dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))')
+        hit = 'path.hit.violating[data-from="folder:models"][data-to="folder:services"]'
+        wait_for(hit)
+        @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))))
         wait_for("#popup .pair.violating")
         assert_includes @browser.css("#popup .pair.violating").map(&:text), "Order -> Pricing (dependency)"
       end
@@ -2804,7 +2991,7 @@ Expected: the new tests fail: no `#card`, no `#source`, no `path.hit`, no `#rege
       const points = [section.startPoint, ...(section.bendPoints || []), section.endPoint];
       const d = points.map((point, i) => `${i ? "L" : "M"}${point.x + 20},${point.y + 20}`).join(" ");
       el("path", { class: `arrow${arrow.violating ? " violating" : ""}`, d });
-      el("path", { class: `hit${arrow.violating ? " violating" : ""}`, d, "data-index": index });
+      el("path", { class: `hit${arrow.violating ? " violating" : ""}`, d, "data-index": index, "data-from": arrow.from, "data-to": arrow.to });
     });
   }
 ```
