@@ -7,8 +7,8 @@ module Uml
         { "id" => id, "kind_folder" => folder, "level" => level, "stereotype" => stereotype }
       end
 
-      def edge(from, to, violating: false, kind: "dependency")
-        { "from" => from, "to" => to, "kind" => kind, "violating" => violating }
+      def edge(from, to, violating: false, kind: "dependency", kinds: [kind])
+        { "from" => from, "to" => to, "kind" => kind, "kinds" => kinds, "violating" => violating }
       end
 
       def ids(view)
@@ -55,12 +55,12 @@ module Uml
       end
 
       def test_a_foreign_edge_gives_an_oval_and_an_arrow_on_the_first_screen_only
-        views = Views.build([entry("Billing::Client", "services", 1)], ["Billing"], [], [{ "from" => "Billing::Client", "to" => "Faraday", "kind" => "dependency" }])
+        views = Views.build([entry("Billing::Client", "services", 1)], ["Billing"], [], [{ "from" => "Billing::Client", "to" => "Faraday", "kind" => "dependency", "kinds" => ["dependency"] }])
         oval = views["root"]["nodes"].find { |node| node["id"] == "foreign:Faraday" }
         assert_equal ["foreign", "Faraday", nil], oval.values_at("type", "label", "levels")
         arrow = views["root"]["arrows"].first
         assert_equal ["Billing", "foreign:Faraday", false], arrow.values_at("from", "to", "violating")
-        assert_equal [{ "from" => "Billing::Client", "to" => "Faraday", "kind" => "dependency", "violating" => false }], arrow["pairs"]
+        assert_equal [{ "from" => "Billing::Client", "to" => "Faraday", "kind" => "dependency", "kinds" => ["dependency"], "violating" => false }], arrow["pairs"]
         assert_empty views["Billing"]["arrows"]
       end
 
@@ -71,6 +71,13 @@ module Uml
         assert arrow["violating"]
         assert_equal [["Order", "Pricing", "dependency", true], ["User", "Pricing", "association", false]],
                      arrow["pairs"].map { |pair| pair.values_at("from", "to", "kind", "violating") }
+      end
+
+      def test_a_pair_keeps_every_kind_of_its_edge_next_to_the_strongest
+        views = Views.build([entry("Order", "models", 0), entry("User", "models", 0)], [],
+                            [edge("Order", "User", kind: "association", kinds: ["association", "dependency"])], [])
+        pair = views["folder:models"]["arrows"].first["pairs"].first
+        assert_equal ["association", ["association", "dependency"]], pair.values_at("kind", "kinds")
       end
 
       def test_a_container_shows_the_level_range_of_its_classes_and_a_class_node_its_level

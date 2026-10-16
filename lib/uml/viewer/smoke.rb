@@ -24,7 +24,7 @@ module Uml
         graph = Graph.build(workspace)
         violating = graph["edges"].select { |edge| edge["violating"] }
         out.puts "#{name}: #{graph['classes'].size} classes, #{violating.size} violating"
-        violating.each { |edge| out.puts "  #{edge['from']} -> #{edge['to']} (#{edge['kind']})" }
+        violating.each { |edge| out.puts "  #{edge['from']} -> #{edge['to']} (#{edge['kinds'].join(', ')})" }
         expectations(workspace, graph).map { |problem| "#{name}: #{problem}" }
       rescue StandardError => error
         ["#{name}: #{error.message}"]

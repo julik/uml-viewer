@@ -68,7 +68,7 @@ module Uml
         key = [from_path[index][1], to_path[index][1]]
         arrow = views[view_id]["arrows"][key] ||= { "from" => key[0], "to" => key[1], "violating" => false, "pairs" => [] }
         arrow["violating"] ||= edge["violating"]
-        arrow["pairs"] << { "from" => edge["from"], "to" => edge["to"], "kind" => edge["kind"], "violating" => edge["violating"] }
+        arrow["pairs"] << { "from" => edge["from"], "to" => edge["to"], "kind" => edge["kind"], "kinds" => edge["kinds"], "violating" => edge["violating"] }
       end
 
       def self.finish(entry, views)

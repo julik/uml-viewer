@@ -428,6 +428,35 @@ module Uml
         assert_includes @browser.css("#popup .pair.violating").map(&:text), "Order -> Pricing (dependency)"
       end
 
+      def test_hovering_an_arrow_lists_all_kinds_of_a_pair_and_leaving_it_hides_the_popup
+        reboot(build_project(
+          "app/models/order.rb" => "class Order\n  belongs_to :pricing\n  def price = Pricing.new\nend\n",
+          "app/services/pricing.rb" => "class Pricing\nend\n"
+        ))
+        @browser.goto(@server.url)
+        hit = 'path.hit.violating[data-from="folder:models"][data-to="folder:services"]'
+        wait_for(hit)
+        @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))))
+        wait_for("#popup .pair.violating")
+        assert_equal ["Order -> Pricing (association, dependency)"], @browser.css("#popup .pair").map(&:text)
+        @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseout", { bubbles: true }))))
+        wait_until(-> { "the popup stayed visible" }) { @browser.at_css("#popup")["hidden"] }
+      end
+
+      def test_hovering_an_arrow_without_a_red_pair_marks_no_pair_red
+        reboot(build_project(
+          "app/services/pricing.rb" => "class Pricing\n  def order = Order.new\nend\n",
+          "app/models/order.rb" => "class Order\nend\n"
+        ))
+        @browser.goto(@server.url)
+        hit = 'path.hit[data-from="folder:services"][data-to="folder:models"]'
+        wait_for(hit)
+        @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))))
+        wait_for("#popup .pair")
+        assert_equal ["Pricing -> Order (dependency)"], @browser.css("#popup .pair").map(&:text)
+        assert_empty @browser.css("#popup .pair.violating")
+      end
+
       def test_regen_rescans
         @browser.goto(@server.url)
         wait_for("#regen")

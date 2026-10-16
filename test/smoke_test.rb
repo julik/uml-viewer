@@ -21,6 +21,14 @@ module Uml
         assert_includes out.string.lines(chomp: true), "  Order -> Reports::Summary (dependency)"
       end
 
+      def test_a_violating_edge_with_two_kinds_prints_both
+        project = git_project
+        File.write(File.join(project, "app/models/order.rb"), "class Order\n  has_many :summaries, class_name: \"Reports::Summary\"\n  def sum = Reports::Summary.new\nend\n")
+        out = StringIO.new
+        assert_empty Smoke.run([project], out: out)
+        assert_includes out.string.lines(chomp: true), "  Order -> Reports::Summary (association, dependency)"
+      end
+
       def test_an_expected_edge_that_exists_passes
         project = git_project
         File.write(Workspace.new(project).path("expect.yml"),
