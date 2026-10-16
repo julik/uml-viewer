@@ -71,6 +71,7 @@ module Uml
           ops = Operations.new(result.value, file).collect
           if classes.key?(main[:id])
             owner = classes[main[:id]]
+            owner["parse_errors"].map! { |error| "#{owner['file']} #{error}" } if owner["files"].size == 1
             owner["files"] << file
             owner["ops"].concat(ops)
             owner["parse_errors"].concat(parse_errors(result).map { |error| "#{file} #{error}" })

@@ -307,7 +307,7 @@ module Uml
 
       def test_a_reopened_class_merges_ops_and_parse_errors_of_both_files
         root = project(
-          "app/models/order.rb" => "class Order\n  def total = 0\nend\n",
+          "app/models/order.rb" => "class Order\n  def total = 0\nend\nbar(\n",
           "app/models/order_extra.rb" => "class Order\n  def tax = 1\n  def x(\nend\n"
         )
         order = Scanner.new(root).scan["classes"].find { |entry| entry["id"] == "Order" }
@@ -315,7 +315,8 @@ module Uml
         assert_equal [["total", "app/models/order.rb"], ["tax", "app/models/order_extra.rb"]],
                      order["ops"].first(2).map { |op| op.values_at("name", "file") }
         refute_empty order["parse_errors"]
-        assert_match(%r{\Aapp/models/order_extra\.rb line \d+: }, order["parse_errors"].first)
+        files = order["parse_errors"].map { |error| error[%r{\A(\S+) line \d+: }, 1] }
+        assert_equal ["app/models/order.rb", "app/models/order_extra.rb"], files.uniq
       end
 
       def test_a_skip_entry_with_a_trailing_slash_drops_the_folder
