@@ -5,11 +5,13 @@ module Uml
     class PolicyTest < TestCase
       LEVELS = { "levels" => [["models"], ["services"], ["controllers"]] }.freeze
 
-      def scan(classes, edges, namespaces = [])
+      def scan(classes, edges, namespaces = [], foreign_edges: [])
         {
-          "classes" => classes.map { |id, folder| { "id" => id, "kind_folder" => folder, "file" => "x.rb", "files" => ["x.rb"], "stereotype" => "class", "parse_errors" => [] } },
-          "edges" => edges.map { |from, to| { "from" => from, "to" => to, "kind" => "dependency" } },
-          "namespaces" => namespaces
+          "classes" => classes.map { |id, folder| { "id" => id, "kind_folder" => folder, "file" => "x.rb", "files" => ["x.rb"], "stereotype" => "class", "ops" => [], "parse_errors" => [] } },
+          "edges" => edges.map { |from, to, kinds = ["dependency"]| { "from" => from, "to" => to, "kind" => kinds.first, "kinds" => kinds } },
+          "foreign_edges" => foreign_edges.map { |from, to| { "from" => from, "to" => to, "kind" => "dependency", "kinds" => ["dependency"] } },
+          "namespaces" => namespaces,
+          "folders" => classes.values.uniq
         }
       end
 
@@ -124,6 +126,40 @@ module Uml
         graph = apply(scan(classes, [["Order", "Pricing"], ["User", "Pricing"]]), "omit_edges" => ["Order -> Pricing"])
         assert_equal [["User", "Pricing"]], graph["edges"].map { |e| [e["from"], e["to"]] }
         assert_equal [["User", "Pricing"]], graph["arrows"].first["pairs"]
+      end
+
+      def test_an_association_alone_is_never_violating_across_levels
+        graph = apply(scan({ "Order" => "models", "Pricing" => "services" }, [["Order", "Pricing", ["association"]]]))
+        refute graph["edges"].first["violating"]
+      end
+
+      def test_inheritance_and_implements_are_violating_across_levels
+        graph = apply(scan({ "Order" => "models", "Base" => "services", "Audit" => "services" },
+                           [["Order", "Base", ["inheritance"]], ["Order", "Audit", ["implements"]]]))
+        assert_equal [true, true], graph["edges"].map { |edge| edge["violating"] }
+      end
+
+      def test_a_merged_pair_shown_as_association_is_violating_when_it_also_has_a_dependency
+        graph = apply(scan({ "Order" => "models", "Pricing" => "services" }, [["Order", "Pricing", ["association", "dependency"]]]))
+        assert_equal ["association", true], graph["edges"].first.values_at("kind", "violating")
+      end
+
+      def test_edge_kinds_replaces_every_kind_of_the_pair
+        graph = apply(scan({ "Order" => "models", "Pricing" => "services" }, [["Order", "Pricing", ["association", "dependency"]]]),
+                      "edge_kinds" => { "Order -> Pricing" => "association" })
+        assert_equal ["association", ["association"], false], graph["edges"].first.values_at("kind", "kinds", "violating")
+      end
+
+      def test_only_foreign_edges_to_a_listed_name_and_from_a_kept_class_stay
+        input = scan({ "Order" => "models", "Pricing" => "services" }, [], foreign_edges: [["Order", "Faraday"], ["Order", "JSON"], ["Pricing", "Faraday"]])
+        graph = apply(input, "foreign" => ["Faraday"], "omit" => ["Pricing"])
+        assert_equal [["Order", "Faraday"]], graph["foreign_edges"].map { |edge| edge.values_at("from", "to") }
+      end
+
+      def test_a_level_folder_that_does_not_exist_on_disk_gives_a_warning
+        input = scan({ "Order" => "models" }, []).merge("folders" => %w[lib models])
+        graph = apply(input, "levels" => [["models"], ["lib"], ["workers"]])
+        assert_equal ["levels: unknown folder workers"], graph["warnings"]
       end
     end
   end

@@ -6,11 +6,10 @@ module Uml
         classes = scan["classes"].reject { |entry| omitted_by_name?(entry["id"], omit) }
         namespaces = scan["namespaces"].select { |name| classes.any? { |entry| entry["id"].start_with?("#{name}::") } }
         classes = classes.reject { |entry| omit.include?("folder:#{entry['kind_folder']}") && !in_namespace_box?(entry["id"], namespaces) }
-        kept = classes.to_h { |entry| [entry["id"], entry] }
         levels = level_index(policy["levels"])
         classes = classes.map { |entry| entry.merge("level" => levels[entry["kind_folder"]]) }
         by_id = classes.to_h { |entry| [entry["id"], entry] }
-        edges = scan["edges"].select { |edge| kept.key?(edge["from"]) && kept.key?(edge["to"]) }
+        edges = scan["edges"].select { |edge| by_id.key?(edge["from"]) && by_id.key?(edge["to"]) }
         edges = adjust_edges(edges, policy["edge_kinds"], policy["omit_edges"])
                 .map { |edge| edge.merge("violating" => violating?(edge, by_id)) }
         box_of = classes.to_h { |entry| [entry["id"], box_id(entry, namespaces)] }
@@ -18,7 +17,9 @@ module Uml
           "classes" => classes,
           "edges" => edges,
           "boxes" => boxes(classes, box_of, namespaces),
-          "arrows" => arrows(edges, box_of)
+          "arrows" => arrows(edges, box_of),
+          "foreign_edges" => scan["foreign_edges"].select { |edge| policy["foreign"].include?(edge["to"]) && by_id.key?(edge["from"]) },
+          "warnings" => (policy["levels"].flatten.uniq - scan["folders"]).map { |name| "levels: unknown folder #{name}" }
         }
       end
 
@@ -32,7 +33,7 @@ module Uml
 
       def self.adjust_edges(edges, edge_kinds, omit_edges)
         edges.reject { |edge| omit_edges.include?(pair_key(edge)) }
-             .map { |edge| edge_kinds.key?(pair_key(edge)) ? edge.merge("kind" => edge_kinds[pair_key(edge)]) : edge }
+             .map { |edge| edge_kinds.key?(pair_key(edge)) ? edge.merge("kind" => edge_kinds[pair_key(edge)], "kinds" => [edge_kinds[pair_key(edge)]]) : edge }
       end
 
       def self.pair_key(edge)
@@ -44,11 +45,11 @@ module Uml
       end
 
       def self.violating?(edge, by_id)
-        return false if edge["kind"] == "association"
-
         from = by_id[edge["from"]]["level"]
         to = by_id[edge["to"]]["level"]
-        !from.nil? && !to.nil? && from < to
+        return false if from.nil? || to.nil? || from >= to
+
+        edge["kinds"].any? { |kind| kind != "association" }
       end
 
       def self.box_id(entry, namespaces)

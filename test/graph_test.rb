@@ -80,6 +80,19 @@ module Uml
         workspace.write_atomic("policy.yml", File.read(workspace.path("policy.yml")).sub(/^foreign:.*$/, "foreign: [JSON]"))
         refute_includes Graph.build(workspace)["summary"]["foreign"].map(&:first), "JSON"
       end
+
+      def test_an_unreadable_file_shows_as_a_summary_warning
+        project = project_copy
+        File.symlink(File.join(project, "app/models/missing.rb"), File.join(project, "app/models/ghost.rb"))
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        assert_includes Graph.build(workspace)["summary"]["warnings"], "unreadable file: app/models/ghost.rb"
+      end
+
+      def test_the_summary_counts_associations_and_lists_warnings
+        summary = graph["summary"]
+        assert_equal [0, 0, []], summary.values_at("unresolved", "polymorphic", "warnings")
+      end
     end
   end
 end

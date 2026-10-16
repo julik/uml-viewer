@@ -44,6 +44,10 @@ module Uml
           raise Invalid, "policy.yml: levels must be a list of lists of folder names"
         end
         raise Invalid, "policy.yml: edge_kinds must be a mapping" unless policy["edge_kinds"].is_a?(Hash)
+        unless policy["edge_kinds"].all? { |pair, kind| pair.is_a?(String) && pair.match?(/\A\S+ -> \S+\z/) && Scanner::KINDS.include?(kind) }
+          raise Invalid, "policy.yml: edge_kinds maps \"From -> To\" to one of #{Scanner::KINDS.join(', ')}"
+        end
+        raise Invalid, "policy.yml: title must be text" unless policy["title"].is_a?(String)
         raise Invalid, "policy.yml: proposals must be a list" unless policy["proposals"].is_a?(Array)
         unless policy["proposals"].all? { |proposal| proposal.is_a?(Hash) && !proposal["id"].nil? }
           raise Invalid, "policy.yml: each proposal must be a mapping with an id"

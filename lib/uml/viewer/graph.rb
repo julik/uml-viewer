@@ -17,13 +17,24 @@ module Uml
         applied = Policy.apply(scan, policy)
         graph = {
           "version" => 1,
-          "title" => policy["title"].to_s.empty? ? File.basename(workspace.root) : policy["title"],
+          "title" => policy["title"].empty? ? File.basename(workspace.root) : policy["title"],
           "namespaces" => scan["namespaces"],
           "proposals" => policy["proposals"],
-          "summary" => { "classes" => applied["classes"].size, "skipped" => scan["skipped"], "foreign" => scan["foreign"].reject { |name, _| policy["foreign"].include?(name) }.first(20) }
-        }.merge(applied)
+          "summary" => summary(scan, applied, policy)
+        }.merge(applied.slice("classes", "edges", "boxes", "arrows"))
         workspace.write_atomic("graph.json", JSON.generate(graph))
         graph
+      end
+
+      def self.summary(scan, applied, policy)
+        {
+          "classes" => applied["classes"].size,
+          "skipped" => scan["skipped"],
+          "foreign" => scan["foreign"].reject { |name, _| policy["foreign"].include?(name) }.first(20),
+          "unresolved" => scan["unresolved"],
+          "polymorphic" => scan["polymorphic"],
+          "warnings" => applied["warnings"] + scan["unreadable"].map { |file| "unreadable file: #{file}" }
+        }
       end
 
       def self.ids(graph)

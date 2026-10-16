@@ -95,6 +95,30 @@ module Uml
         assert_equal %w[app lib], PolicyFile::DEFAULTS["sources"]
         assert_empty PolicyFile::DEFAULTS["skip"]
       end
+
+      def test_an_edge_kinds_value_that_is_no_kind_raises_with_the_rule
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("edge_kinds:\n  \"Order -> User\": friend\n")) }
+        assert_equal 'policy.yml: edge_kinds maps "From -> To" to one of inheritance, implements, association, dependency', error.message
+      end
+
+      def test_an_edge_kinds_key_without_an_arrow_raises_with_the_rule
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("edge_kinds:\n  Order: association\n")) }
+        assert_match(/\Apolicy\.yml: edge_kinds maps/, error.message)
+      end
+
+      def test_a_valid_edge_kinds_entry_loads
+        assert_equal({ "Order -> User" => "association" }, PolicyFile.load(write("edge_kinds:\n  \"Order -> User\": association\n"))["edge_kinds"])
+      end
+
+      def test_a_title_that_is_not_text_raises
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("title: 12\n")) }
+        assert_equal "policy.yml: title must be text", error.message
+      end
+
+      def test_a_syntax_error_names_the_line_psych_reports
+        error = assert_raises(PolicyFile::Invalid) { PolicyFile.load(write("title: x\nsources: [app]\nlevels: [\n")) }
+        assert_equal "policy.yml line 4: did not find expected node content", error.message
+      end
     end
   end
 end
