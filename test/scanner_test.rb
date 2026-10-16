@@ -50,109 +50,109 @@ module Uml
         refute edge?("Order", "Order")
       end
 
-def found_edge(from, to, in_scan: scan)
-  in_scan["edges"].find { |edge| edge["from"] == from && edge["to"] == to }
-end
-
-def test_a_superclass_gives_an_inheritance_edge
-  assert_equal ["inheritance"], found_edge("User", "ApplicationRecord")["kinds"]
-end
-
-def test_class_name_as_a_string_wins_over_the_association_name
-  assert_equal "association", found_edge("Order", "User")["kind"]
-  refute scan["edges"].any? { |edge| edge["to"] == "ApprovedBy" }
-end
-
-def test_a_compact_model_association_to_a_sibling_merges_with_its_dependency
-  edge = found_edge("Shop::Customer", "Shop::Store")
-  assert_equal ["association", ["association", "dependency"]], [edge["kind"], edge["kinds"]]
-end
-
-def test_association_shapes
-  root = project(
-    "app/models/user.rb" => "class User\nend\n",
-    "app/models/tag.rb" => "class Tag\nend\n",
-    "app/models/order_address.rb" => "class OrderAddress\nend\n",
-    "app/models/shipping_batch.rb" => "class ShippingBatch\nend\n",
-    "app/models/order.rb" => <<~RUBY
-      class Order
-        belongs_to :buyer, class_name: :User
-        has_many :tags, through: :taggings
-        has_many :order_addresses
-        has_many :shipping_batches
+      def found_edge(from, to, in_scan: scan)
+        in_scan["edges"].find { |edge| edge["from"] == from && edge["to"] == to }
       end
-    RUBY
-  )
-  result = Scanner.new(root).scan
-  %w[User Tag OrderAddress ShippingBatch].each do |target|
-    assert_equal "association", found_edge("Order", target, in_scan: result)&.fetch("kind"), "Order -> #{target}"
-  end
-end
 
-def test_has_one_and_belongs_to_keep_a_final_s_and_habtm_singularizes
-  root = project(
-    "app/models/address.rb" => "class Address\nend\n",
-    "app/models/status.rb" => "class Status\nend\n",
-    "app/models/category.rb" => "class Category\nend\n",
-    "app/models/order.rb" => "class Order\n  has_one :address\n  belongs_to :status\n  has_and_belongs_to_many :categories\nend\n"
-  )
-  result = Scanner.new(root).scan
-  assert_equal %w[Address Category Status], result["edges"].select { |edge| edge["from"] == "Order" }.map { |edge| edge["to"] }
-end
+      def test_a_superclass_gives_an_inheritance_edge
+        assert_equal ["inheritance"], found_edge("User", "ApplicationRecord")["kinds"]
+      end
 
-def test_through_with_source_takes_the_target_from_source
-  root = project(
-    "app/models/user.rb" => "class User\nend\n",
-    "app/models/order.rb" => "class Order\n  has_many :buyers, through: :line_items, source: :user\nend\n"
-  )
-  assert_equal "association", found_edge("Order", "User", in_scan: Scanner.new(root).scan)["kind"]
-end
+      def test_class_name_as_a_string_wins_over_the_association_name
+        assert_equal "association", found_edge("Order", "User")["kind"]
+        refute scan["edges"].any? { |edge| edge["to"] == "ApprovedBy" }
+      end
 
-def test_polymorphic_and_unresolved_associations_give_no_edge_and_are_counted
-  root = project(
-    "app/models/user.rb" => "class User\nend\n",
-    "app/models/order.rb" => "class Order\n  belongs_to :owner, polymorphic: true\n  has_many :ghosts\n  belongs_to :buyer, class_name: User.name\nend\n"
-  )
-  result = Scanner.new(root).scan
-  assert_equal [1, 2], result.values_at("polymorphic", "unresolved")
-  assert_equal ["dependency"], found_edge("Order", "User", in_scan: result)["kinds"]
-  assert_equal [["Order", "User"]], result["edges"].map { |edge| [edge["from"], edge["to"]] }
-end
+      def test_a_compact_model_association_to_a_sibling_merges_with_its_dependency
+        edge = found_edge("Shop::Customer", "Shop::Store")
+        assert_equal ["association", ["association", "dependency"]], [edge["kind"], edge["kinds"]]
+      end
 
-def test_a_leading_double_colon_in_class_name_forces_the_top_level_class
-  root = project(
-    "app/models/user.rb" => "class User\nend\n",
-    "app/models/shop/user.rb" => "class Shop::User\nend\n",
-    "app/models/shop/customer.rb" => "class Shop::Customer\n  belongs_to :owner, class_name: \"::User\"\nend\n"
-  )
-  result = Scanner.new(root).scan
-  assert edge?("Shop::Customer", "User", in_scan: result)
-  refute edge?("Shop::Customer", "Shop::User", in_scan: result)
-end
+      def test_association_shapes
+        root = project(
+          "app/models/user.rb" => "class User\nend\n",
+          "app/models/tag.rb" => "class Tag\nend\n",
+          "app/models/order_address.rb" => "class OrderAddress\nend\n",
+          "app/models/shipping_batch.rb" => "class ShippingBatch\nend\n",
+          "app/models/order.rb" => <<~RUBY
+            class Order
+              belongs_to :buyer, class_name: :User
+              has_many :tags, through: :taggings
+              has_many :order_addresses
+              has_many :shipping_batches
+            end
+          RUBY
+        )
+        result = Scanner.new(root).scan
+        %w[User Tag OrderAddress ShippingBatch].each do |target|
+          assert_equal "association", found_edge("Order", target, in_scan: result)&.fetch("kind"), "Order -> #{target}"
+        end
+      end
 
-def test_include_extend_and_prepend_give_implements_edges
-  root = project(
-    "app/models/concerns/trackable.rb" => "module Trackable\nend\n",
-    "app/services/auditing.rb" => "module Auditing\nend\n",
-    "app/services/logging.rb" => "module Logging\nend\n",
-    "app/models/order.rb" => "class Order\n  include Trackable\n  extend Auditing\n  prepend Logging\nend\n"
-  )
-  result = Scanner.new(root).scan
-  %w[Trackable Auditing Logging].each do |target|
-    assert_equal ["implements"], found_edge("Order", target, in_scan: result)&.fetch("kinds"), "Order -> #{target}"
-  end
-end
+      def test_has_one_and_belongs_to_keep_a_final_s_and_habtm_singularizes
+        root = project(
+          "app/models/address.rb" => "class Address\nend\n",
+          "app/models/status.rb" => "class Status\nend\n",
+          "app/models/category.rb" => "class Category\nend\n",
+          "app/models/order.rb" => "class Order\n  has_one :address\n  belongs_to :status\n  has_and_belongs_to_many :categories\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert_equal %w[Address Category Status], result["edges"].select { |edge| edge["from"] == "Order" }.map { |edge| edge["to"] }
+      end
 
-def test_folders_lists_the_kind_folders_that_exist_on_disk
-  assert_equal %w[controllers lib models services], scan["folders"]
-end
+      def test_through_with_source_takes_the_target_from_source
+        root = project(
+          "app/models/user.rb" => "class User\nend\n",
+          "app/models/order.rb" => "class Order\n  has_many :buyers, through: :line_items, source: :user\nend\n"
+        )
+        assert_equal "association", found_edge("Order", "User", in_scan: Scanner.new(root).scan)["kind"]
+      end
 
-def test_an_unresolved_reference_gives_a_foreign_edge_to_its_first_segment
-  root = project("app/services/pricing.rb" => "class Pricing < Base::Calculator\n  def http = Faraday::Connection.new\nend\n")
-  result = Scanner.new(root).scan
-  assert_equal [["Pricing", "Base", "inheritance"], ["Pricing", "Faraday", "dependency"]],
-               result["foreign_edges"].map { |edge| edge.values_at("from", "to", "kind") }
-end
+      def test_polymorphic_and_unresolved_associations_give_no_edge_and_are_counted
+        root = project(
+          "app/models/user.rb" => "class User\nend\n",
+          "app/models/order.rb" => "class Order\n  belongs_to :owner, polymorphic: true\n  has_many :ghosts\n  belongs_to :buyer, class_name: User.name\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert_equal [1, 2], result.values_at("polymorphic", "unresolved")
+        assert_equal ["dependency"], found_edge("Order", "User", in_scan: result)["kinds"]
+        assert_equal [["Order", "User"]], result["edges"].map { |edge| [edge["from"], edge["to"]] }
+      end
+
+      def test_a_leading_double_colon_in_class_name_forces_the_top_level_class
+        root = project(
+          "app/models/user.rb" => "class User\nend\n",
+          "app/models/shop/user.rb" => "class Shop::User\nend\n",
+          "app/models/shop/customer.rb" => "class Shop::Customer\n  belongs_to :owner, class_name: \"::User\"\nend\n"
+        )
+        result = Scanner.new(root).scan
+        assert edge?("Shop::Customer", "User", in_scan: result)
+        refute edge?("Shop::Customer", "Shop::User", in_scan: result)
+      end
+
+      def test_include_extend_and_prepend_give_implements_edges
+        root = project(
+          "app/models/concerns/trackable.rb" => "module Trackable\nend\n",
+          "app/services/auditing.rb" => "module Auditing\nend\n",
+          "app/services/logging.rb" => "module Logging\nend\n",
+          "app/models/order.rb" => "class Order\n  include Trackable\n  extend Auditing\n  prepend Logging\nend\n"
+        )
+        result = Scanner.new(root).scan
+        %w[Trackable Auditing Logging].each do |target|
+          assert_equal ["implements"], found_edge("Order", target, in_scan: result)&.fetch("kinds"), "Order -> #{target}"
+        end
+      end
+
+      def test_folders_lists_the_kind_folders_that_exist_on_disk
+        assert_equal %w[controllers lib models services], scan["folders"]
+      end
+
+      def test_an_unresolved_reference_gives_a_foreign_edge_to_its_first_segment
+        root = project("app/services/pricing.rb" => "class Pricing < Base::Calculator\n  def http = Faraday::Connection.new\nend\n")
+        result = Scanner.new(root).scan
+        assert_equal [["Pricing", "Base", "inheritance"], ["Pricing", "Faraday", "dependency"]],
+                     result["foreign_edges"].map { |edge| edge.values_at("from", "to", "kind") }
+      end
 
       def test_compact_and_nested_forms_both_give_the_full_constant
         assert klass("Shop::Customer")
