@@ -248,6 +248,21 @@ module Uml
         wait_for('g.box.namespace[data-id="Shop::Billing"]')
       end
 
+      def test_opening_a_view_starts_at_the_top_left_and_escape_returns_to_the_scroll_of_the_view_left
+        reboot(build_project((1..30).to_h { |number| [format("app/models/ns%02d/item.rb", number), "module Ns#{format('%02d', number)}\n  class Item\n  end\nend\n"] }))
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="Ns30"]')
+        4.times { press("=", ctrl: true) }
+        @browser.evaluate("scrollTo(400, 300)")
+        wait_until(-> { "the first screen did not scroll: #{@browser.evaluate('[scrollX, scrollY]')}" }) { @browser.evaluate("[scrollX, scrollY]") == [400, 300] }
+        @browser.evaluate(%(document.querySelector('g.box[data-id="Ns01"] text.title').dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))))
+        wait_for('g.box.class[data-id="Ns01::Item"]')
+        assert_equal [0, 0], @browser.evaluate("[scrollX, scrollY]")
+        press("Escape")
+        wait_for('g.box[data-id="Ns30"]')
+        wait_until(-> { "scroll stayed at #{@browser.evaluate('[scrollX, scrollY]')}" }) { @browser.evaluate("[scrollX, scrollY]") == [400, 300] }
+      end
+
       def test_a_crumb_opens_its_view
         boot_nested_namespace_project
         @browser.goto(@server.url)
