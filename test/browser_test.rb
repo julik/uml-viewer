@@ -528,7 +528,77 @@ module Uml
         assert @browser.evaluate('(() => { const r = document.getElementById("menu").getBoundingClientRect(); return r.right <= innerWidth && r.bottom <= innerHeight; })()')
       end
 
+      def test_a_covered_class_shows_its_grade_color_dots_and_metrics_on_the_card
+        boot_coverage_project
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"][data-grade="10"]')
+        assert_equal "10", @browser.at_css('g.box[data-id="folder:models"] circle.dot.c').attribute("data-grade")
+        assert_equal "", @browser.at_css('g.box[data-id="folder:models"] circle.dot.m').attribute("data-grade")
+        double_click('text.member[data-id="Order"]')
+        wait_for_text("#card h2", "Order")
+        assert_includes @browser.at_css("#card").text, "C grade 10 (mu 1.0, sigma 0.0)"
+        assert_includes @browser.at_css("#card").text, "M grade: no data"
+        assert_includes op_texts, "+ total  cc 1  cov 100%  crap 1.0"
+      end
+
+      def test_a_class_the_tests_never_loaded_shows_coverage_zero_and_the_note
+        boot_coverage_project
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Pricing"]')
+        wait_for_text("#card h2", "Pricing")
+        assert_includes op_texts, "+ rate  cc 2  cov 0%  crap 6.0"
+        assert_equal ["not loaded by the tests"], @browser.css("#card p.note.coverage").map(&:text)
+      end
+
+      def test_a_project_without_coverage_shows_grey_dots_and_the_simplecov_note
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"] circle.dot.c')
+        assert_equal "", @browser.at_css('g.box[data-id="folder:models"]').attribute("data-grade")
+        double_click('text.member[data-id="Order"]')
+        wait_for_text("#card h2", "Order")
+        assert_includes @browser.at_css("#card").text, "C grade: no data"
+        assert_includes @browser.css("#card p.note.coverage").map(&:text), "no coverage: run your tests with SimpleCov"
+      end
+
+      def test_a_never_loaded_class_is_a_red_node_and_its_dots_sit_below_the_level_text
+        boot_coverage_project
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="folder:services"] text.title')
+        node = wait_for('g.box.class[data-id="Pricing"]')
+        assert_equal "1", node.attribute("data-grade")
+        assert_includes @browser.at_css('g.box.class[data-id="Pricing"] rect').attribute("style"), "hsl(0,"
+        clear = @browser.evaluate(<<~JS)
+          (() => {
+            const level = document.querySelector('g.box.class[data-id="Pricing"] text.level').getBBox();
+            const dot = document.querySelector('g.box.class[data-id="Pricing"] circle.dot.m').getBBox();
+            return dot.y >= level.y + level.height;
+          })()
+        JS
+        assert clear, "the M dot overlaps the level text"
+      end
+
+      def test_an_unreadable_coverage_file_shows_the_banner
+        boot_coverage_project(resultset: :broken)
+        @browser.goto(@server.url)
+        wait_for_text("#banner", "coverage file unreadable:")
+      end
+
       private
+
+      def boot_coverage_project(resultset: :valid)
+        project = build_project(
+          "app/models/order.rb" => "class Order\n  def total\n    1\n  end\nend\n",
+          "app/services/pricing.rb" => "class Pricing\n  def rate(x)\n    x ? 1 : 2\n  end\nend\n"
+        )
+        FileUtils.mkdir_p(File.join(project, "coverage"))
+        text = if resultset == :valid
+                 JSON.generate("RSpec" => { "coverage" => { File.join(File.realpath(project), "app/models/order.rb") => [nil, 1, 1, nil, nil] }, "timestamp" => Time.now.to_i + 60 })
+               else
+                 "{\"RSpec\": {"
+               end
+        File.write(File.join(project, "coverage", ".resultset.json"), text)
+        reboot(project)
+      end
 
       def boot_box_project(count)
         files = (1..count).to_h { |number| [format("app/models/item%02d.rb", number), "class Item#{format('%02d', number)}\nend\n"] }
