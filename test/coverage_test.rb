@@ -74,7 +74,8 @@ module Uml
           { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => "1,0" }, "timestamp" => 1 } },
           { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => [1, "0"] }, "timestamp" => 1 } },
           { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => { "lines" => nil } }, "timestamp" => 1 } },
-          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => [1, 0] } } }
+          { "RSpec" => { "coverage" => { "/x/app/models/order.rb" => [1, 0] } } },
+          {}
         ].each do |resultset|
           assert_raises(Coverage::Unreadable, resultset.inspect) { Coverage.load(root_with(JSON.generate(resultset)), FILES) }
         end

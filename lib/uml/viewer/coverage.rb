@@ -19,7 +19,7 @@ module Uml
       end
 
       def self.suites?(resultset)
-        resultset.is_a?(Hash) && resultset.values.all? do |suite|
+        resultset.is_a?(Hash) && !resultset.empty? && resultset.values.all? do |suite|
           suite.is_a?(Hash) && suite["timestamp"].is_a?(Numeric) && suite["coverage"].is_a?(Hash) &&
             suite["coverage"].values.all? { |entry| hits?(entry.is_a?(Hash) ? entry["lines"] : entry) }
         end
