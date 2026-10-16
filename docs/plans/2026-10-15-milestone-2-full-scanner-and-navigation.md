@@ -2967,7 +2967,7 @@ This task changes documentation and runs smoke; it adds no code.
 Double-click a box to open it, Esc to go back. Double-click a class for its card; click an op for its source. Hover an arrow for its pairs. Right-click a box or a class to send Explain or Omit to Claude.
 ```
 
-- [ ] **Step 3: Check the private expect files.** Before this plan's eng-review, the user confirmed new real edges for each test app: at least one `association` with `class_name:`, one compact-model sibling `association` (legacy app), and one red `inheritance` or `implements`. They are in each app's `expect.yml` in its state folder. Never copy them into the repository.
+- [ ] **Step 3: Check the private expect files.** On 2026-10-16 the user confirmed 4 new real edges for each test app, 12 in all: 6 `association` (4 through `class_name:` that differs from the association name, 1 where the wrong rule gives another existing class, 1 compact-model sibling with a singularized name), 3 `implements` and 3 `inheritance` (1 between two folders of the same level row). None is red: a read-only Prism probe found no red `inheritance` or `implements` edge in any of the three apps, so the kinds-aware red flag is tested on the fixture only (Task 5). The edges are in each app's `expect.yml` in its state folder. Never copy them into the repository.
 
 - [ ] **Step 4: Run smoke on the three apps**
 
