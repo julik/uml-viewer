@@ -119,6 +119,73 @@ module Uml
         workspace.write_atomic("policy.yml", "levels: [\n")
         assert_includes Graph.inputs(workspace).keys, File.join(workspace.root, "app/models/order.rb")
       end
+
+      def write_coverage(project, text)
+        FileUtils.mkdir_p(File.join(project, "coverage"))
+        File.write(File.join(project, "coverage", ".resultset.json"), text)
+      end
+
+      def resultset_for(project, lines_by_file, timestamp: Time.now.to_i + 60)
+        JSON.generate("RSpec" => { "coverage" => lines_by_file.transform_keys { |file| File.join(project, file) }, "timestamp" => timestamp })
+      end
+
+      def test_the_overlay_reaches_the_classes_the_views_and_the_summary
+        project = project_copy
+        write_coverage(project, resultset_for(project, { "app/services/pricing.rb" => [nil, 1, 1, nil, nil] }))
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        graph = Graph.build(workspace)
+        pricing = graph["classes"].find { |entry| entry["id"] == "Pricing" }
+        assert_equal [1.0, 1.0, 10], [pricing["ops"].first["coverage"], pricing["ops"].first["crap"], pricing["crap"]["grade"]]
+        services = graph["views"]["root"]["nodes"].find { |node| node["id"] == "folder:services" }
+        assert services.key?("c_grade")
+        assert_equal 1, graph["summary"]["coverage"]["files"]
+        assert_operator graph["summary"]["coverage"]["scanned"], :>, 1
+      end
+
+      def test_an_unreadable_coverage_file_still_writes_the_graph_with_the_banner_and_recovers
+        project = project_copy
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        write_coverage(project, "{\"RSpec\": {")
+        graph = Graph.build(workspace)
+        path = File.join(workspace.root, "coverage", ".resultset.json")
+        assert_equal "coverage file unreadable: #{path}", graph["summary"]["coverage"]["banner"]
+        assert_equal ["coverage file unreadable: #{path}"], graph["classes"].find { |entry| entry["id"] == "Pricing" }["coverage_notes"]
+        write_coverage(project, resultset_for(project, { "app/services/pricing.rb" => [nil, 1, 1, nil, nil] }))
+        refute_equal "coverage file unreadable: #{path}", Graph.build(workspace)["summary"]["coverage"]["banner"]
+      end
+
+      def test_a_partial_result_file_shows_the_partial_banner
+        project = project_copy
+        write_coverage(project, resultset_for(project, { "app/services/pricing.rb" => [nil, 1, 1, nil, nil] }))
+        workspace = Workspace.new(project)
+        Graph.prepare(workspace)
+        coverage = Graph.build(workspace)["summary"]["coverage"]
+        assert_equal "coverage looks partial: 1 of #{coverage['scanned']} files; run the full suite", coverage["banner"]
+      end
+
+      def test_a_mutation_snapshot_gives_m_grades_and_a_broken_one_a_warning
+        workspace = Workspace.new(project_copy)
+        Graph.prepare(workspace)
+        workspace.write_atomic("mutation.json", JSON.generate("Pricing#initialize" => { "killed" => 9, "survived" => 1, "uncovered" => 0 }))
+        assert_equal 9, Graph.build(workspace)["classes"].find { |entry| entry["id"] == "Pricing" }["mutation"]["grade"]
+        workspace.write_atomic("mutation.json", "[1, 2]")
+        assert_includes Graph.build(workspace)["summary"]["warnings"], "mutation snapshot unreadable: #{workspace.path('mutation.json')}"
+      end
+
+      def test_the_coverage_line_names_the_files_and_the_time
+        assert_equal "coverage: 3 of 10 files from 2024-04-25T10:52:50Z", Graph.coverage_line("time" => 1_714_042_370, "files" => 3, "scanned" => 10, "banner" => nil)
+        assert_equal "coverage: none", Graph.coverage_line("time" => nil, "files" => 0, "scanned" => 10, "banner" => nil)
+      end
+
+      def test_inputs_list_the_coverage_file_and_the_mutation_snapshot
+        workspace = Workspace.new(project_copy)
+        Graph.prepare(workspace)
+        inputs = Graph.inputs(workspace)
+        assert_includes inputs.keys, File.join(workspace.root, "coverage", ".resultset.json")
+        assert_includes inputs.keys, workspace.path("mutation.json")
+      end
     end
   end
 end

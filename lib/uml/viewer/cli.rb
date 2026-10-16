@@ -54,6 +54,8 @@ module Uml
                   "skipped #{summary['skipped'].size} files, no constant"
         @out.puts "#{summary['unresolved']} unresolved associations, #{summary['polymorphic']} polymorphic associations (no target)"
         @out.puts "unlisted foreign: #{summary['foreign'].map { |name, count| "#{name} (#{count})" }.join(', ')}"
+        @out.puts Graph.coverage_line(summary["coverage"])
+        summary["warnings"] += [summary["coverage"]["banner"]].compact
         summary["warnings"].each { |warning| @out.puts "warning: #{warning}" }
         0
       end

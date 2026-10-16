@@ -70,7 +70,16 @@ module Uml
         assert_equal 0, status
         assert_equal "1 unresolved associations, 1 polymorphic associations (no target)", lines[1]
         assert_match(/\Aunlisted foreign: /, lines[2])
-        assert_equal ["warning: levels: unknown folder workers"], lines.drop(3)
+        assert_equal "coverage: none", lines[3]
+        assert_equal ["warning: levels: unknown folder workers"], lines.drop(4)
+      end
+
+      def test_scan_warns_about_an_unreadable_mutation_snapshot
+        run_cli("init", @project)
+        workspace = Workspace.new(@project)
+        workspace.write_atomic("mutation.json", "{")
+        _, out, = run_cli("scan", @project)
+        assert_includes out.lines(chomp: true), "warning: mutation snapshot unreadable: #{workspace.path('mutation.json')}"
       end
 
       def test_scan_with_a_broken_policy_prints_the_line_and_returns_1

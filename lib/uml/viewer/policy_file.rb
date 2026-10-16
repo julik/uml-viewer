@@ -52,6 +52,10 @@ module Uml
         unless policy["proposals"].all? { |proposal| proposal.is_a?(Hash) && !proposal["id"].nil? }
           raise Invalid, "policy.yml: each proposal must be a mapping with an id"
         end
+        cutoffs = policy["crap_cutoffs"]
+        unless cutoffs.is_a?(Array) && cutoffs.size == 9 && cutoffs.all?(Numeric) && cutoffs.each_cons(2).all? { |low, high| low < high }
+          raise Invalid, "policy.yml: crap_cutoffs must be 9 numbers in rising order"
+        end
 
         policy
       end

@@ -321,6 +321,15 @@ module Uml
         @thread.join(2)
         refute File.exist?(@workspace.path("server.json"))
       end
+
+      def test_a_new_coverage_file_rescans_and_colors_the_graph
+        FileUtils.mkdir_p(File.join(@project, "coverage"))
+        File.write(File.join(@project, "coverage", ".resultset.json"),
+                   JSON.generate("RSpec" => { "coverage" => { File.join(@workspace.root, "app/services/pricing.rb") => [nil, 1, 1, nil, nil] }, "timestamp" => Time.now.to_i + 60 }))
+        wait_for_graph("the coverage file never reached the graph") do |graph|
+          graph["classes"].find { |entry| entry["id"] == "Pricing" }["crap"]
+        end
+      end
     end
   end
 end

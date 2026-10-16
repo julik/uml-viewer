@@ -130,6 +130,12 @@ module Uml
         failures = Smoke.run([project], out: StringIO.new)
         assert_match(/\A#{File.basename(project)}: policy\.yml line \d+: /, failures.first)
       end
+
+      def test_smoke_prints_the_coverage_line_of_each_project
+        out = StringIO.new
+        Smoke.run([git_project], out: out)
+        assert_includes out.string.lines(chomp: true), "  coverage: none"
+      end
     end
   end
 end

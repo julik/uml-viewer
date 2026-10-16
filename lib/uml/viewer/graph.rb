@@ -1,5 +1,6 @@
 require "json"
 require "set"
+require "time"
 
 module Uml
   module Viewer
@@ -15,18 +16,49 @@ module Uml
         policy = PolicyFile.load(workspace.path("policy.yml"))
         scan = Scanner.new(workspace.root, sources: policy["sources"], skip: policy["skip"]).scan
         applied = Policy.apply(scan, policy)
+        files = applied["classes"].flat_map { |entry| entry["files"] }.uniq
+        coverage, coverage_error = load_coverage(workspace, files)
+        mutation, mutation_error = load_mutation(workspace)
+        overlay = Overlay.apply(applied["classes"], coverage: coverage, mutation: mutation, cutoffs: policy["crap_cutoffs"],
+                                                    mtimes: files.to_h { |file| [file, mtime(File.join(workspace.root, file))] },
+                                                    missing_note: coverage_error || Overlay::NO_COVERAGE)
+        summary = summary(scan, applied, policy)
+        summary["coverage"] = overlay["coverage"].merge("banner" => coverage_error || overlay["coverage"]["banner"])
+        summary["warnings"] += [mutation_error].compact
         graph = {
           "version" => 2,
           "title" => policy["title"].empty? ? File.basename(workspace.root) : policy["title"],
           "proposals" => policy["proposals"],
-          "summary" => summary(scan, applied, policy),
+          "summary" => summary,
           "namespaces" => applied["namespaces"],
-          "classes" => applied["classes"],
+          "classes" => overlay["classes"],
           "edges" => applied["edges"],
-          "views" => applied["views"]
+          "views" => Overlay.boxes(applied["views"], overlay["classes"], policy["crap_cutoffs"])
         }
         workspace.write_atomic("graph.json", JSON.generate(graph))
         graph
+      end
+
+      def self.load_coverage(workspace, files)
+        [Coverage.load(workspace.root, files), nil]
+      rescue Coverage::Unreadable => error
+        [nil, error.message]
+      end
+
+      def self.load_mutation(workspace)
+        path = workspace.path("mutation.json")
+        return [nil, nil] unless File.exist?(path)
+
+        data = JSON.parse(File.read(path))
+        data.is_a?(Hash) && data.values.all?(Hash) ? [data, nil] : [nil, "mutation snapshot unreadable: #{path}"]
+      rescue JSON::ParserError, SystemCallError
+        [nil, "mutation snapshot unreadable: #{path}"]
+      end
+
+      def self.coverage_line(coverage)
+        return "coverage: none" if coverage["time"].nil?
+
+        "coverage: #{coverage['files']} of #{coverage['scanned']} files from #{Time.at(coverage['time']).utc.iso8601}"
       end
 
       def self.summary(scan, applied, policy)
@@ -53,7 +85,8 @@ module Uml
           PolicyFile::DEFAULTS["sources"]
         end
         files = sources.flat_map { |source| Dir.glob("#{source}/**/*.rb", base: workspace.root) }
-        ([workspace.path("policy.yml")] + files.map { |file| File.join(workspace.root, file) }).to_h { |path| [path, mtime(path)] }
+        extra = [File.join(workspace.root, "coverage", ".resultset.json"), workspace.path("mutation.json")]
+        ([workspace.path("policy.yml")] + extra + files.map { |file| File.join(workspace.root, file) }).to_h { |path| [path, mtime(path)] }
       end
 
       def self.mtime(path)
