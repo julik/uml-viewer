@@ -384,8 +384,8 @@ Level   Folder kinds
 - Sigma is the population standard deviation: divide by the number of methods.
 - The M grade of a class or a box comes from the summed counts of its methods. The op `self.x` matches the key `Class.x`, other ops `Class#x`. A key for a method that no longer exists is ignored. A snapshot that is not valid JSON, or not a mapping of mappings, gives the scan warning "mutation snapshot unreadable: <path>" and no M grades.
 - A class node has the same grades as a box: the C grade, the M grade and their mean.
-- A class whose methods with coverage data all have coverage 0 gets C grade 1, whatever its CRAP: a class with no tested method is red. Box grades still pool the CRAP of all methods under the box.
-- Box color: the mean of the C grade and the M grade that exist. With neither, the box is neutral grey.
+- A class whose methods with coverage data all have coverage 0 gets C grade 1, whatever its CRAP: a class with no tested method is red. A box whose measured methods all have coverage 0 gets C grade 1 too; otherwise a box pools the CRAP of all methods under it.
+- Box color: the mean of the C grade and the M grade that exist. With neither, the box keeps its plain color, and its grey C and M dots mean no data.
 
 ### 6.3 Real example (first test of the overlay)
 

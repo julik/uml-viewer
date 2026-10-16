@@ -164,11 +164,26 @@ module Uml
         entries = classes.map { |entry| entry.merge("kind_folder" => "services", "level" => 1, "stereotype" => "class") }
         views = Overlay.boxes(Views.build(entries, ["Billing", "Billing::Gateway"], [], []), classes, CUTOFFS)
         billing = views["root"]["nodes"].find { |node| node["id"] == "Billing" }
-        assert_equal [Overlay.stats([1.0, 20.0, 20.0], CUTOFFS)["grade"], nil], billing.values_at("c_grade", "m_grade")
+        assert_equal [6, nil], billing.values_at("c_grade", "m_grade")
         client = views["Billing::Gateway"]["nodes"].find { |node| node["id"] == "Billing::Gateway::Client" }
         assert_equal 1, client["c_grade"]
         limits = views["Billing"]["nodes"].find { |node| node["id"] == "Billing::Limits" }
         assert_equal [nil, nil, nil], limits.values_at("c_grade", "m_grade", "grade")
+      end
+
+      def test_a_box_whose_measured_methods_all_have_coverage_zero_gets_c_grade_one_and_one_covered_method_keeps_the_crap_grade
+        classes = apply([
+          klass("Dead::First", [op("a", 1, 1, 3, file: "app/services/dead/first.rb")]),
+          klass("Dead::Second", [op("b", 1, 1, 3, file: "app/services/dead/second.rb")]),
+          klass("Live::First", [op("a", 1, 1, 3, file: "app/services/live/first.rb")]),
+          klass("Live::Second", [op("b", 1, 1, 3, file: "app/services/live/second.rb")])
+        ], lines: {
+          "app/services/dead/first.rb" => [1, 0, nil], "app/services/dead/second.rb" => [1, 0, nil],
+          "app/services/live/first.rb" => [1, 0, nil], "app/services/live/second.rb" => [1, 1, nil]
+        })["classes"]
+        entries = classes.map { |entry| entry.merge("kind_folder" => "services", "level" => 1, "stereotype" => "class") }
+        nodes = Overlay.boxes(Views.build(entries, ["Dead", "Live"], [], []), classes, CUTOFFS)["root"]["nodes"]
+        assert_equal [1, 10], %w[Dead Live].map { |id| nodes.find { |node| node["id"] == id }["c_grade"] }
       end
     end
   end

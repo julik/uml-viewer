@@ -30,7 +30,10 @@ module Uml
         measured = ops.reject { |op| op["coverage"].nil? }
         return nil if measured.empty?
 
-        crap = stats(measured.map { |op| op["crap"] }, cutoffs)
+        untested(stats(measured.map { |op| op["crap"] }, cutoffs), measured)
+      end
+
+      def self.untested(crap, measured)
         measured.all? { |op| op["coverage"].zero? } ? crap.merge("grade" => 1) : crap
       end
 
@@ -126,9 +129,9 @@ module Uml
       end
 
       def self.pooled(entries, cutoffs)
-        craps = entries.flat_map { |entry| entry["ops"].filter_map { |op| op["crap"] } }
+        measured = entries.flat_map { |entry| entry["ops"].reject { |op| op["coverage"].nil? } }
         counts = entries.filter_map { |entry| entry.dig("mutation", "counts") }
-        crap = craps.empty? ? nil : stats(craps, cutoffs)
+        crap = measured.empty? ? nil : untested(stats(measured.map { |op| op["crap"] }, cutoffs), measured)
         tested = counts.empty? ? nil : mutation_grade(COUNTS.to_h { |key| [key, counts.sum { |count| count[key] }] })
         { "c_grade" => crap&.fetch("grade"), "m_grade" => tested&.fetch("grade"), "grade" => mean_grade(crap, tested) }
       end
