@@ -86,4 +86,4 @@ Tests:
   - Session tests check only the message for most bad bodies, not the 400, not that a refused PUT leaves session.json unchanged, and not that GET and PUT need the token.
   - No test pins the server start order (server.json last). The shutdown test's fixed sleep can only false-green on a slow machine.
   - No browser tests for zoom and scroll restore, zoom surviving a live reload, Ctrl+- and +, or a double-click on a folder box. The no-token page test cannot tell the token guard from the 403 path.
-  - No test that Escape closes the source panel before the card. The hover test does not check that a non-red pair is not red after a redraw.
+  - No test that Escape closes the source panel before the card.
