@@ -70,6 +70,35 @@ module Uml
         wait_for(%(#menu button[data-op="#{op}"])).click
       end
 
+      def press(key, ctrl: false)
+        @browser.evaluate(%(document.dispatchEvent(new KeyboardEvent("keydown", { key: #{key.to_json}, ctrlKey: #{ctrl} }))))
+      end
+
+      def double_click(css)
+        wait_for(css).click(mode: :double)
+      end
+
+      def crumbs
+        @browser.css("#crumbs button.crumb").map(&:text)
+      end
+
+      def box_y(id)
+        @browser.at_css(%(g.box[data-id="#{id}"])).attribute("transform")[/translate\([\d.]+,([\d.]+)\)/, 1].to_f
+      end
+
+      def slow_down_layouts(milliseconds)
+        @browser.evaluate(<<~JS)
+          (() => {
+            window.layouts = 0;
+            const layout = ELK.prototype.layout;
+            ELK.prototype.layout = function (...args) {
+              window.layouts += 1;
+              return new Promise((resolve) => setTimeout(resolve, #{milliseconds})).then(() => layout.apply(this, args));
+            };
+          })()
+        JS
+      end
+
       def test_first_screen_shows_kind_and_namespace_boxes_and_a_red_arrow
         @browser.goto(@server.url)
         wait_for('g.box[data-id="folder:models"]')
@@ -143,16 +172,7 @@ module Uml
       def test_a_poll_during_a_slow_layout_starts_no_second_layout
         @browser.goto(@server.url)
         wait_for('g.box[data-id="folder:models"]')
-        @browser.evaluate(<<~JS)
-          (() => {
-            window.layouts = 0;
-            const layout = ELK.prototype.layout;
-            ELK.prototype.layout = function (...args) {
-              window.layouts += 1;
-              return new Promise((resolve) => setTimeout(resolve, 2500)).then(() => layout.apply(this, args));
-            };
-          })()
-        JS
+        slow_down_layouts(2500)
         Graph.build(@workspace)
         wait_until(-> { "the changed graph never started a layout" }) { @browser.evaluate("window.layouts").positive? }
         sleep 3.5
@@ -206,6 +226,130 @@ module Uml
         wait_for('g.box[data-id="folder:models"]')
         @browser.headers.set("X-UML-Token" => "stale")
         wait_for_text("#banner", "session expired: reopen with uml-viewer")
+      end
+
+      def test_double_click_on_a_namespace_box_opens_its_view_and_escape_goes_back
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal ["rails_shapes", "Reports"], crumbs
+        press("Escape")
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal ["rails_shapes"], crumbs
+      end
+
+      def test_double_click_on_a_namespace_member_opens_that_view_with_its_parents_in_the_crumbs
+        boot_nested_namespace_project
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Shop::Billing"]')
+        wait_for('g.box.class[data-id="Shop::Billing::Invoice"]')
+        assert_equal ["extra", "Shop", "Billing"], crumbs
+        press("Escape")
+        wait_for('g.box.namespace[data-id="Shop::Billing"]')
+      end
+
+      def test_a_crumb_opens_its_view
+        boot_nested_namespace_project
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Shop::Billing"]')
+        wait_for('g.box.class[data-id="Shop::Billing::Invoice"]')
+        @browser.at_css('#crumbs button.crumb[data-id="root"]').click
+        wait_for('g.box.namespace[data-id="Shop"]')
+      end
+
+      def test_the_open_view_survives_a_graph_change
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        File.write(File.join(@workspace.root, "app/services/reports/late.rb"), "module Reports\n  class Late\n  end\nend\n")
+        Graph.build(@workspace)
+        wait_for('g.box.class[data-id="Reports::Late"]')
+        assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def test_a_reload_without_the_token_in_the_url_draws_the_page_and_restores_the_open_view
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        wait_until(-> { "session.json never held the open view" }) do
+          File.exist?(@workspace.path("session.json")) && JSON.parse(File.read(@workspace.path("session.json")))["drill"] == ["root", "Reports"]
+        end
+        @browser.goto("http://127.0.0.1:#{@server.port}/")
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal "", @browser.at_css("#banner").text
+      end
+
+      def test_a_saved_view_that_no_longer_exists_opens_its_nearest_parent
+        @workspace.write_atomic("session.json", JSON.generate("drill" => ["root", "Reports", "Reports::Gone"]))
+        @browser.goto(@server.url)
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def test_a_page_without_any_token_says_the_session_expired
+        @browser.goto("http://127.0.0.1:#{@server.port}/")
+        wait_for_text("#banner", "session expired: reopen with uml-viewer")
+      end
+
+      def test_ctrl_plus_zooms_in_and_ctrl_zero_resets
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        width = @browser.at_css("#diagram").attribute("width").to_f
+        press("=", ctrl: true)
+        wait_until(-> { "the diagram did not zoom in" }) { (@browser.at_css("#diagram").attribute("width").to_f - width * 1.25).abs < 0.5 }
+        press("0", ctrl: true)
+        wait_until(-> { "the zoom did not reset" }) { (@browser.at_css("#diagram").attribute("width").to_f - width).abs < 0.5 }
+      end
+
+      def test_a_box_without_a_level_sits_above_the_boxes_with_levels
+        reboot(build_project("app/models/order.rb" => "class Order\nend\n", "app/workers/sync.rb" => "class Sync\n  def run = Order.first\nend\n"))
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:workers"]')
+        assert_operator box_y("folder:workers"), :<, box_y("folder:models")
+      end
+
+      def test_a_listed_foreign_name_is_an_oval_on_the_first_screen
+        reboot(build_project("app/models/order.rb" => "class Order\n  def dump = JSON.generate({})\nend\n"))
+        @workspace.write_atomic("policy.yml", File.read(@workspace.path("policy.yml")).sub(/^foreign:.*$/, "foreign: [JSON]"))
+        Graph.build(@workspace)
+        @browser.goto(@server.url)
+        wait_for('g.box.foreign[data-id="foreign:JSON"] ellipse')
+        assert_equal "JSON", @browser.at_css('g.box.foreign[data-id="foreign:JSON"] text.title').text
+        assert @browser.at_css("path.arrow")
+      end
+
+      def test_a_project_without_classes_draws_an_empty_diagram_without_an_error
+        reboot(build_project("lib/scripts/run_once.rb" => "puts 1\n"))
+        @browser.goto(@server.url)
+        wait_until(-> { "the title crumb never showed" }) { crumbs == ["extra"] }
+        assert_equal "", @browser.at_css("#banner").text
+        assert_empty @browser.css("g.box")
+      end
+
+      def test_a_double_click_during_a_slow_layout_opens_the_view_when_the_layout_ends
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="Reports"]')
+        slow_down_layouts(2000)
+        Graph.build(@workspace)
+        wait_until(-> { "the changed graph never started a layout" }) { @browser.evaluate("window.layouts").positive? }
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def test_a_corrupt_saved_view_opens_the_first_screen_without_an_error
+        @workspace.write_atomic("session.json", "{")
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal "", @browser.at_css("#banner").text
+      end
+
+      def test_a_failed_graph_fetch_says_server_not_reachable
+        @browser.network.intercept
+        @browser.on(:request) { |request| request.url.include?("/graph.json") ? request.abort : request.continue }
+        @browser.goto(@server.url)
+        wait_for_text("#banner", "server not reachable")
+        refute_includes @browser.at_css("#banner").text, "Failed to fetch"
       end
 
       private
