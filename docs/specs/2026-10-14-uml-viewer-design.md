@@ -118,6 +118,8 @@ PolicyFile          reads and validates policy.yml into a plain hash    psych (s
 Policy              applies omit, edge_kinds, omit_edges, foreign;      none (pure)
                     computes levels and the violating flag; builds
                     the root kind boxes and proposal views
+Views               one view per box: its child boxes, its classes      none (pure)
+                    and the collapsed arrows between them
 PolicyInit          writes the first policy.yml from the folder         Workspace
                     kinds found in the project
 Coverage            reads SimpleCov .resultset.json (both formats);     stdlib json
@@ -178,11 +180,13 @@ kind_folder    services                        first folder under app/; "lib" fo
 stereotype     class | module | concern |      node type; concern when the module
                data | admin                    has `extend ActiveSupport::Concern`;
                                                data for Data.define/Struct.new/Class.new
-ops            [{name, visibility, cc,         def nodes; `private`/`protected` with and
+ops            [{name, visibility, cc, file,   def nodes; `private`/`protected` with and
                line_start, line_end}]          without arguments; `def self.x` is public
                                                unless `private_class_method`
 parse_errors   ["line 12: unexpected end"]     Prism errors; empty when clean
 ```
+
+Every `def` in a file belongs to the main class of that file. A `def` inside another `def` is not an op. `def self.x`, a `def` inside `class << self` and a `def` inside a `class_methods do` block get the name `self.x`. Each op names its file, because a reopened class merges the ops of more than one file.
 
 ### 4.3 Cyclomatic complexity
 
@@ -389,20 +393,21 @@ A method with `cc = 4` and coverage `0.5`: `crap = 16 × 0.125 + 4 = 6.0`. The s
 ```
 Route                      Response
 -----                      --------
-GET /                      index.html (needs ?token=)
+GET /                      index.html (holds no data; no token)
 GET /app.js, /elk.js       the page script, and the vendored elk.bundled.js (no data, no token)
 GET /graph.json            the current graph
 GET /version               {"graph": <mtime>, "agent": <last watcher heartbeat>,
                             "queue": <number of waiting commands>, "error": <last scan error or null>,
                             "failed": <last failed command {id, op, reason} or null>}
-GET /source?file=&line=    the file text, only for files in the scanned set
+GET /source?file=&line=    {file, line, text}, only for a file of a class in the graph
 POST /commands             append one command to the mailbox; 201 with {id}
+GET /session               the stored view, or {}
 PUT /session               store the view (drill path, pan, zoom, proposal) in session.json; 204
 POST /scans                rescan now (the Regen button); 202
 ```
 
 - **Trust boundary.** Any web page in the browser can send requests to `127.0.0.1`, and the queued commands reach an agent that can edit code. So:
-  - `token` is 32 random hex characters, new at each server start. Every route except the two static scripts needs the header `X-UML-Token: <token>` (the page reads it from its own URL once, then removes it from the address bar with `history.replaceState`, so it stays out of the browser history). A custom header forces a CORS preflight, which the server never answers with allow headers, so a foreign page cannot send it. A request without the right token gets 403.
+  - `token` is 32 random hex characters, new at each server start. Every route except the page and the two static scripts needs the header `X-UML-Token: <token>`. The page holds no data. It reads the token from its own URL once, keeps it in `sessionStorage` for a reload, and removes it from the address bar with `history.replaceState`, so it stays out of the browser history. A custom header forces a CORS preflight, which the server never answers with allow headers, so a foreign page cannot send it. A request without the right token gets 403.
   - The server refuses a request whose `Host` header is not `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding).
   - `POST /commands` accepts a strict body and nothing more. `propose` has no `target`. `context` has `target: {proposal_id}`. `omit` and `explain` have `target: {id, kind, proposal_id}`. A `target.id` must be an id in the current graph, and a `proposal_id` must be `null` or a known proposal. An unknown op, an unknown key or a wrong type gets 400. The server adds `id` and `at`.
   - A body over 4 KB gets 413. When the queue holds 100 commands, a new one gets 429, and the page shows "queue full: start Claude or clear the queue".
@@ -421,6 +426,8 @@ POST /scans                rescan now (the Regen button); 202
 
 - First screen: the top-level namespace boxes with collapsed arrows. Each box lists its child namespaces and its classes.
 - Double-click a box: open the next level. Esc or the back label: up one level.
+- A view shows the child boxes and the classes of the open box. An edge shows once, in the view where the box paths of its two ends split, as one arrow between the two child nodes there. Foreign ovals show on the first screen only.
+- A box whose folder is in no row of `levels:` sits above the highest level.
 - Hover an arrow: popup with every `from -> to` pair it bundles. Violating pairs are red.
 - Double-click a class: class card with the ops (`+` public, `-` private), cc, coverage, CRAP, the level, the files, and the parse errors.
 - Click an op: a source panel opens on that file at that line, read only.
@@ -581,8 +588,8 @@ project path does not exist              CLI error                              
 - Licences: the gemspec lists `["MIT", "EPL-2.0"]`. `LICENSE` (MIT) and the elkjs `LICENSE-EPL-2.0` are both in `spec.files`.
 - elkjs 0.12.0 is vendored unmodified as `lib/uml/viewer/web/elk.bundled.js`, with its EPL-2.0 license file next to it.
 - Runtime dependencies: `prism` (1.9 or later) and `webrick` (`~> 1.9`: the server relies on `ProcHandler` internals). No Rails, no ActiveSupport.
-- **Milestone 1, walking skeleton through the riskiest parts.** A thin path end to end on the medium app: a scan with classes, `dependency` edges and the Resolver; the kind boxes and namespace boxes on the first screen, laid out by elkjs; right-click Explain; the token check; the mailbox with `inbox` and `done`; `watch`; the skill; and Claude answering in the terminal; `rake smoke` with the `expect.yml` files. This retires the two unknowns first: whether elkjs gives a readable first screen for the large app, and whether the Monitor loop works in a real session. Milestone 1 is done only when criterion 5b passes. When the idle session does not wake on a Monitor event, stop and design the doorbell again before milestone 2.
-- **Milestone 2.** The full scanner rules (associations, ActiveAdmin, Data.define, reopened classes), levels and red arrows, drill-down, class card, source panel, rescans.
+- **Milestone 1, walking skeleton through the riskiest parts.** A thin path end to end on the medium app: a scan with classes, `dependency` edges and the Resolver; the kind boxes and namespace boxes on the first screen, laid out by elkjs; right-click Explain; the token check; the mailbox with `inbox` and `done`; `watch`; the skill; and Claude answering in the terminal; `rake smoke` with the `expect.yml` files. This retires the two unknowns first: whether elkjs gives a readable first screen for the large app, and whether the Monitor loop works in a real session. Milestone 1 is done only when criterion 5b passes. When the idle session does not wake on a Monitor event, stop and design the doorbell again before milestone 2. On 2026-10-15 the user chose to start milestone 2 before the 5b gate, because milestone 2 does not touch `watch`, the mailbox or the skill. 5b stays the exit gate of milestone 1, and a doorbell redesign stays in those units.
+- **Milestone 2.** The full scanner rules (associations, Data.define, reopened classes), levels and red arrows, drill-down, class card, source panel, rescans. The ActiveAdmin pseudo-classes of section 4.2 move to a later milestone (user decision, 2026-10-16).
 - **Milestone 3.** Overlay (coverage, CRAP, mutation snapshot).
 - **Milestone 4.** Proposals, declutter modes, `rake eval:skill`.
 - Publishing to RubyGems is a separate decision after the user has used it.
