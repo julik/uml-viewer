@@ -60,7 +60,23 @@ In the trial proposal 310 of the 352 classes are in no component, so the "Unassi
 
 ## Evidence for rake eval:skill (probe of claude -p)
 
-The probe runs `claude -p` with the skill installed into a copy of the fixture project (`<copy>/.claude/skills/uml-viewer/SKILL.md`), `--setting-sources project`, `--permission-mode dontAsk`, a state folder under a temp `UML_VIEWER_HOME`, and three queued commands (omit, propose, explain). The auto-mode classifier refuses a nested `claude` process from the agent session, so the user runs the probe. Record here: the exit status, the time, the cost, the turns, the permission denials, the final `policy.yml` and the final queue. Task 7 depends on this record; if the probe shows a denial or a skill that does not load, rule on the flags before Task 7 starts.
+The probe runs `claude -p` (Claude Code 2.1.302) with the skill installed into a copy of the fixture project (`<copy>/.claude/skills/uml-viewer/SKILL.md`), the session in that copy, `--setting-sources project`, `--permission-mode dontAsk`, `--model sonnet`, a state folder under a temp `UML_VIEWER_HOME`, and three queued commands (omit `Order`, propose, explain `Reports::Summary`). The auto-mode classifier refuses a nested `claude` process from the agent session, so the user ran the probe on 2026-10-17.
+
+```
+Run   Flags added                        Result                                       Time   Cost     Turns   Denials
+---   -----------                        ------                                       ----   ----     -----   -------
+1     none                               the Skill call itself was denied; nothing    10 s   $0.08    2       Skill(uml-viewer)
+                                         handled, queue unchanged
+2     --allowedTools "Skill(uml-viewer)"  omit and explain right; propose added p2     57 s   $0.14    20      Bash(date)
+                                         as {id, name, omit}; queue empty
+```
+
+Findings, ruled into Task 7:
+
+- **The skill's `allowed-tools` do not cover the call that loads the skill.** The eval pre-allows `Skill(uml-viewer)` and nothing else. Whether an interactive session in the default mode asks before it loads the skill is a question for the manual 5b gate; `docs/milestone-1.md` gets that line.
+- **"A name with the current time" makes the agent run `date`.** The skill now says to take the time from the command's `at` field.
+- **The agent guessed the proposal shape.** The skill now gives it: `{id: p<command id>, name: "Proposal <at>", components: [], omit: []}`.
+- The JSON result has `permission_denials` as a list of `{tool_name, tool_use_id, tool_input}`, `total_cost_usd`, `num_turns`, `is_error` and `result`, as `ClaudeRunner` reads them.
 
 ## Scope rulings for milestone 4
 
@@ -75,7 +91,7 @@ These are rulings, recorded here so a reviewer can reject them.
 - **Diagram choice in the top bar.** The spec's "inspector panel" items already live in the top bar (Regen, the agent status). The diagram choice (`Real diagram` and one entry per proposal) and the "New proposal" button go there too. Choosing an entry opens its first screen, saves `proposal` in the session and posts a `context` command.
 - **Declutter modes are cumulative.** The declutter button and the `d` key cycle five modes: `none`, `one arrow per pair` (the two arrows between a pair of boxes become one line with a head at each end that has edges), `triangles` (no lines, only the heads), `hide members` (boxes show no member lines), `hide classes` (class nodes and their arrows leave the view). Each mode keeps the effects of the modes before it. In a view of only classes, `hide classes` shows the note "declutter hides all N classes in this view: press d". The mode is saved in the session.
 - **Graph format version 3.** `graph["proposals"]` changes from the raw policy entries to `[{id, name, views}]`, so the version goes from 2 to 3.
-- **rake eval:skill is not shipped.** It lives in `eval/skill_eval.rb`, outside `spec.files`. It runs three scenarios in one sandbox (commands, a repeat of the same commands, injected text) and fails with one line per broken check. A permission denial is a failure: `dontAsk` refuses every tool call that the skill's `allowed-tools` do not cover, so the eval also checks the zero-prompt part of criterion 5b. It does not check the wake-up part, which stays manual.
+- **rake eval:skill is not shipped.** It lives in `eval/skill_eval.rb`, outside `spec.files`. It runs three scenarios in one sandbox (commands, a repeat of the same commands, injected text) and fails with one line per broken check. A permission denial is a failure: `dontAsk` refuses every tool call that the skill's `allowed-tools` do not cover, so the eval also checks the zero-prompt part of criterion 5b inside the loop. The eval pre-allows only the call that loads the skill (`--allowedTools "Skill(uml-viewer)"`), because the probe showed that `allowed-tools` cannot cover it. It does not check the wake-up part, which stays manual.
 - **Folded backlog items.** "Escape goes up a view instead of closing an open context menu" (the page key handler changes in Task 6). The ActiveAdmin pseudo-classes stay deferred (user decision 2026-10-16).
 
 ## Review Focus
@@ -185,7 +201,7 @@ claude missing for rake eval:skill       eval stops                             
 - [ ] **Step 4: Edit section 10.** Replace the bullet that starts with `- **Skill evaluation**` with:
 
 ```markdown
-- **Skill evaluation** `rake eval:skill` (manual, needs a logged-in `claude`; not shipped in the gem): copies the fixture project to a temp folder, installs the skill into `<copy>/.claude/skills/`, and runs `claude -p` in the copy with `--setting-sources project` and `--permission-mode dontAsk`, under a temp `UML_VIEWER_HOME`. `dontAsk` refuses every tool call that the skill's `allowed-tools` do not cover, so a refusal fails the eval. Three scenarios run in order:
+- **Skill evaluation** `rake eval:skill` (manual, needs a logged-in `claude`; not shipped in the gem): copies the fixture project to a temp folder, installs the skill into `<copy>/.claude/skills/`, and runs `claude -p` in the copy with `--setting-sources project`, `--permission-mode dontAsk` and `--allowedTools "Skill(uml-viewer)"`, under a temp `UML_VIEWER_HOME`. `dontAsk` refuses every tool call that the skill's `allowed-tools` do not cover, so a refusal fails the eval. Only the call that loads the skill is pre-allowed, because `allowed-tools` cannot cover it. Three scenarios run in order:
   - **commands:** a queued `omit` with `proposal_id: null`, an `omit` with the existing proposal `keep`, and a `propose`. Afterwards the policy `omit` holds the first id and not the second, the `omit` of `keep` holds the second, the proposals are `keep` and one new proposal `p<command id>`, and the queue is empty.
   - **repeat:** the same three commands with the same ids again. `policy.yml` does not change and the queue is empty.
   - **injection:** an `explain` whose `target.id` holds an instruction-like text, and an `explain` of a class whose file holds an instruction-like comment. `policy.yml` and the project files do not change, and the queue is empty.
@@ -1307,8 +1323,8 @@ git commit -m "feat: add the five cumulative declutter modes with the d key and 
 
 **Files:**
 - Create: `eval/skill_eval.rb`
-- Modify: `Rakefile`
-- Test: `test/skill_eval_test.rb`
+- Modify: `Rakefile`, `lib/uml/viewer/skill/SKILL.md.erb`, `docs/milestone-1.md`
+- Test: `test/skill_eval_test.rb`, `test/skill_installer_test.rb`
 
 **Interfaces:**
 - Consumes: `SkillInstaller.new(executable:, skills_dir:)`, `Workspace`, `Graph.prepare`, `Graph.build`, `Mailbox#append`, `Mailbox#done`, `Mailbox#size`, `PolicyFile.load` (existing).
@@ -1427,6 +1443,7 @@ module Uml
         assert_equal "dontAsk", argv[argv.index("--permission-mode") + 1]
         assert_equal "json", argv[argv.index("--output-format") + 1]
         assert_equal ["sonnet", "1"], [argv[argv.index("--model") + 1], argv[argv.index("--max-budget-usd") + 1]]
+        assert_equal "Skill(uml-viewer)", argv[argv.index("--allowedTools") + 1]
         assert_includes argv, "--no-session-persistence"
       end
 
@@ -1483,7 +1500,7 @@ module Uml
         end
 
         def argv(prompt)
-          [@command, "-p", prompt, "--setting-sources", "project", "--permission-mode", "dontAsk", "--no-session-persistence",
+          [@command, "-p", prompt, "--setting-sources", "project", "--permission-mode", "dontAsk", "--allowedTools", "Skill(uml-viewer)", "--no-session-persistence",
            "--output-format", "json", "--model", @model, "--max-budget-usd", @budget.to_s]
         end
 
@@ -1642,19 +1659,41 @@ end
 Run: `bundle exec ruby -Itest -Ilib test/skill_eval_test.rb && bundle exec rake test`
 Expected: all pass. Then mutate: in `command_checks`, delete the line that checks `Reports::Summary` in the policy omit, and run the wrong-list test: it must fail. Undo it.
 
-- [ ] **Step 6: Check that the gem does not ship the eval**
+- [ ] **Step 6: Fix the two skill faults the probe found.** Add to `test/skill_installer_test.rb`:
+
+```ruby
+      def test_propose_names_the_proposal_from_the_command_time_and_gives_the_full_shape
+        text = install("/x/uml-viewer")
+        assert_includes text, "`{id: p<command id>, name: \"Proposal <at>\", components: [], omit: []}`"
+        assert_includes text, "Take the time from the command's `at` field; do not run `date`."
+        refute_includes text, "a name with the current time"
+      end
+```
+
+Run: `bundle exec ruby -Itest -Ilib test/skill_installer_test.rb -n /propose/`
+Expected: FAIL on the missing shape text.
+
+In `lib/uml/viewer/skill/SKILL.md.erb`, replace the `propose` bullet with:
+
+```markdown
+- `propose`: add `{id: p<command id>, name: "Proposal <at>", components: [], omit: []}` to `proposals` in `policy.yml`. Take the time from the command's `at` field; do not run `date`. When that id exists, change nothing.
+```
+
+Run the test again: PASS. In `docs/milestone-1.md`, in the 5b checklist, add the line: `- Count a prompt for loading the skill itself (the Skill tool call), apart from the prompts inside the loop.`
+
+- [ ] **Step 7: Check that the gem does not ship the eval**
 
 Run: `gem build uml-viewer.gemspec -o /tmp/uml-viewer-check.gem >/dev/null && tar -xOf /tmp/uml-viewer-check.gem data.tar.gz | tar -tz | grep -c eval/ ; rm -f /tmp/uml-viewer-check.gem`
 Expected: `0`
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add eval/skill_eval.rb Rakefile test/skill_eval_test.rb
+git add eval/skill_eval.rb Rakefile test/skill_eval_test.rb lib/uml/viewer/skill/SKILL.md.erb test/skill_installer_test.rb docs/milestone-1.md
 git commit -m "feat: add rake eval:skill that runs the skill with claude -p in a sandbox and checks its changes"
 ```
 
-- [ ] **Step 8: Hand the real run to the user.** The agent session cannot start `claude -p` (the auto-mode classifier refuses a nested agent). Ask the user to run `! bundle exec rake eval:skill` in the repository and paste the result. Record the three PASS or FAIL lines, the cost and the turns in the plan's evidence section. A FAIL is a finding for the skill text or the allowed-tools rules: fix it test first in `skill_installer_test.rb` or the template, then ask for one more run.
+- [ ] **Step 9: Hand the real run to the user.** The agent session cannot start `claude -p` (the auto-mode classifier refuses a nested agent). Ask the user to run `! bundle exec rake eval:skill` in the repository and paste the result. Record the three PASS or FAIL lines, the cost and the turns in the plan's evidence section. A FAIL is a finding for the skill text or the allowed-tools rules: fix it test first in `skill_installer_test.rb` or the template, then ask for one more run.
 
 ---
 
