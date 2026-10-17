@@ -15,7 +15,7 @@ Time from right-click Omit to policy.yml                                        
 Permission prompts during the loop                                                       0
 Prompt to load the skill (Skill tool call)                                               no ("Successfully loaded skill, 8 tools allowed")
 Tool that prompted, if any                                                               none
-Large app first screen readable                                                          not checked in this run
+Large app first screen readable                                                          yes: it opens and draws the first screen (user, 2026-10-17)
 ```
 
 Steps:
