@@ -333,7 +333,12 @@ proposals: []
 - **omit.** An id in `omit:` and everything under it leave the diagram, with their edges.
 - **edge_kinds** changes the kind of one pair. Changing to `association` clears the violating flag. Changing to another kind keeps the level check.
 - **omit_edges** drops one pair.
-- **Proposals.** `proposals:` is a list of `{id, name, components: [{id, label, members: [...]}], omit: [...]}`. A member is a namespace id or a class id, or a nested component. In a proposal view the component order is the rank (the first component is level 0). Members that no component lists go into an "Unassigned" box, unless the proposal omits them. The agent never adds a proposal on its own. It adds one only when the user asks, and it keeps existing proposals when it rewrites the policy.
+- **Proposals.** `proposals:` is a list of `{id, name, components: [{id, label, members: [...]}], omit: [...]}`. `name` defaults to the id, `label` to the component id, `components` and `omit` to empty lists. A member is a class id, a namespace id, a folder box id (`folder:models`), or a nested component. The agent never adds a proposal on its own. It adds one only when the user asks, and it keeps existing proposals when it rewrites the policy.
+  - **Membership.** A class goes to the most specific member that matches it: its own class id, then the longest namespace that holds it, then its folder box (top-level classes only). On a tie, the first member in the file wins.
+  - **Rank.** The component order is the rank: the level of a class in a proposal is the index of its top-level component, and the first component is level 0. A nested component has the rank of its top-level component. The violating rule of the real diagram applies with these levels.
+  - **Unassigned.** Classes that no member matches go into an "Unassigned" box (`unassigned:<proposal id>`), unless the proposal omits them. Inside it every class keeps its real path. "Unassigned" has no level, so its edges are never red.
+  - **Boxes.** A component box has the id `component:<proposal id>/<component id>`. Under a namespace member, the namespaces below it stay as boxes; a class member or a folder member puts the class directly in the component. A component with no class shows no box. A member that matches no class gives the scan warning `proposal <id>: member <name> matches no class in the diagram (check the name and the policy omit)`.
+  - **Proposal omit.** A name in the proposal's `omit` removes a class when it is the class id, a namespace that holds it, the folder box of a top-level class, or a box id on the class's path in the proposal. The policy `omit` applies first.
 
 ### 5.3 First policy
 
@@ -410,7 +415,7 @@ GET /version               {"graph": <mtime>, "agent": <last watcher heartbeat>,
 GET /source?file=&line=    {file, line, text}, only for a file of a class in the graph
 POST /commands             append one command to the mailbox; 201 with {id}
 GET /session               the stored view, or {}
-PUT /session               store the view (drill path, pan, zoom, proposal) in session.json; 204
+PUT /session               store the view (drill path, pan, zoom, proposal, declutter) in session.json; 204
 POST /scans                rescan now (the Regen button); 202
 ```
 
@@ -439,9 +444,10 @@ POST /scans                rescan now (the Regen button); 202
 - Hover an arrow: popup with every `from -> to` pair it bundles. Violating pairs are red.
 - Double-click a class: class card with the ops (`+` public, `-` private), cc, coverage, CRAP, the level, the files, and the parse errors.
 - Click an op: a source panel opens on that file at that line, read only.
-- Declutter cycles: arrows per box pair, triangles instead of arrows, hide members, hide classes, none.
+- Declutter: a button in the top bar and the `d` key cycle five modes, each one adding to the one before: `none`, `one arrow per pair` (the two arrows between two boxes become one line with a head at each end that has edges), `triangles` (only the heads, no lines), `hide members` (no member lines in the boxes), `hide classes` (class nodes and their arrows leave the view). When `hide classes` leaves a view empty, the diagram says "declutter hides all N classes in this view: press d". The mode is part of the saved view.
 - Level or level range at the top left of each box. Boxes with lower levels sit lower. A violating arrow is red, in either direction.
-- Inspector panel: "Real diagram", the proposals, "New proposal", "Regen", and the agent status. The status is "watcher running (N waiting)" when the last watcher heartbeat is less than 10 seconds old, else "no agent: N commands wait in the queue". It does not claim that Claude is idle: a running watcher means the doorbell works, not that Claude is free.
+- The top bar holds the inspector items: the crumbs, the diagram choice ("Real diagram" and one entry per proposal), "New proposal", "Regen", the declutter button and the agent status. The status is "watcher running (N waiting)" when the last watcher heartbeat is less than 10 seconds old, else "no agent: N commands wait in the queue". It does not claim that Claude is idle: a running watcher means the doorbell works, not that Claude is free.
+- Choosing an entry of the diagram choice opens the first screen of that diagram and posts a `context` command. When the shown proposal leaves the policy, the page shows the real diagram and the toast "proposal <id> is gone: showing the real diagram".
 - Regen posts `/scans`. The server rescans without the agent.
 - Right-click a box or class: "Explain", "Omit". Each one posts a command.
 - "New proposal" posts a `propose` command. Selecting "Real diagram" or a proposal posts a `context` command.
@@ -539,6 +545,13 @@ mutation snapshot unreadable             no M grades                            
                                                                                     unreadable: <path>"
 crap_cutoffs not 9 rising numbers        scan refuses, keeps the old graph          "policy.yml: crap_cutoffs must be 9 numbers in   policy_file_test
                                                                                     rising order"
+proposal with a wrong shape              scan refuses, keeps the old graph          "policy.yml: proposal <id>: <problem>"           policy_file_test
+proposal member matches no class         member ignored                             scan summary warning: "proposal <id>: member     proposals_test
+                                                                                    <name> matches no class in the diagram (check the name and the policy omit)"
+shown proposal leaves the policy         page shows the real diagram                toast: "proposal <id> is gone: showing the real  browser_test
+                                                                                    diagram"
+claude missing for rake eval:skill       eval stops                                 "claude not found: install Claude Code and log   skill_eval_test
+                                                                                    in, then run rake eval:skill again"
 policy names a level folder that         ignored                                    scan summary warning: "levels: unknown folder    policy_test: unknown folder
 does not exist                                                                      <name>"
 port in use                              next free port                             the URL printed on start                         server_test: busy port
@@ -589,7 +602,11 @@ project path does not exist              CLI error                              
 - **Server**: Net::HTTP requests against WEBrick in a thread: each route; no token, wrong token, foreign `Host`; unknown op, unknown target id, bad JSON; the traversal refusal; a policy change triggers a rescan; a trigger during a slow scan (injected delay) gives exactly two scans, and the final graph holds the latest policy; a failing rescan keeps the old graph and reports the error in `/version`.
 - **Browser**: one Cuprite test on the fixture project: open, drill into a namespace, open a class card, right-click Explain, and assert one queue entry.
 - **install-skill**: the written file holds the absolute executable path in every command and the `allowed-tools` rules; a second run with another executable path rewrites them.
-- **Skill evaluation** `rake eval:skill` (manual, needs a logged-in `claude`): runs `claude -p` with the skill on a copy of the fixture project's state folder, with a queued `omit` and a queued `propose`. It asserts that `policy.yml` has the id in `omit`, has one new proposal, keeps the existing proposals, and that the queue is empty. Its second run on the same queue changes nothing. A queued command whose `target.id` holds an instruction-like text must not change anything outside `policy.yml`. A fixture file with an instruction-like comment, read by a queued `explain`, must not change anything outside `policy.yml` either.
+- **Skill evaluation** `rake eval:skill` (manual, needs a logged-in `claude`; not shipped in the gem): copies the fixture project to a temp folder, installs the skill into `<copy>/.claude/skills/`, and runs `claude -p` in the copy with `--setting-sources project`, `--permission-mode dontAsk` and `--allowedTools "Skill(uml-viewer)"`, under a temp `UML_VIEWER_HOME`. `dontAsk` refuses every tool call that the skill's `allowed-tools` do not cover, so a refusal fails the eval. Only the call that loads the skill is pre-allowed, because `allowed-tools` cannot cover it. Three scenarios run in order:
+  - **commands:** a queued `omit` with `proposal_id: null`, an `omit` with the existing proposal `keep`, and a `propose`. Afterwards the policy `omit` holds the first id and not the second, the `omit` of `keep` holds the second, the proposals are `keep` and one new proposal `p<command id>`, and the queue is empty.
+  - **repeat:** the same three commands with the same ids again. `policy.yml` does not change and the queue is empty.
+  - **injection:** an `explain` whose `target.id` holds an instruction-like text, and an `explain` of a class whose file holds an instruction-like comment. `policy.yml` and the project files do not change, and the queue is empty.
+  In every scenario the project files (except `.claude/`) stay the same. `EVAL_MODEL` (default `sonnet`) and `EVAL_BUDGET` (default `1` dollar per run) tune the run.
 - **Smoke task** `rake smoke` (not in the default test run): scans each project in the environment variable `UML_VIEWER_SMOKE` (paths separated by `:`), asserts no exception, prints the class counts and the violating edges, and asserts that `git status --porcelain` in each project is the same before and after.
   - **Real edges.** When the project's state folder holds an `expect.yml`, smoke asserts each listed edge: `[{from, to, kind, violating}]`. A missing edge, a wrong kind or a wrong flag fails the task with the edge in the message. The file lives only in `~/.uml-viewer/projects/<name>-<hash>/`, never in the gem repository, so the real class names stay private.
   - Smoke runs from milestone 1 on, so the real projects check every milestone.
@@ -604,6 +621,7 @@ project path does not exist              CLI error                              
 - **Milestone 2.** The full scanner rules (associations, Data.define, reopened classes), levels and red arrows, drill-down, class card, source panel, rescans. The ActiveAdmin pseudo-classes of section 4.2 move to a later milestone (user decision, 2026-10-16).
 - **Milestone 3.** Overlay (coverage, CRAP, mutation snapshot).
 - **Milestone 4.** Proposals, declutter modes, `rake eval:skill`.
+Milestone 4 rulings (2026-10-17): membership by most specific member, rank by top-level component, "Unassigned" without a level, cumulative declutter modes, the diagram choice in the top bar, graph format version 3, and rake eval:skill outside the gem in dontAsk mode.
 - Publishing to RubyGems is a separate decision after the user has used it.
 
 ## 12. Later (not version 1)
