@@ -94,6 +94,22 @@ module Uml
                      views["root"]["nodes"].first["members"]
       end
 
+      def test_paths_hold_the_folder_or_namespace_containers_of_each_class
+        paths = Views.paths([entry("Order", "models", 0), entry("Billing::Counter", "services", 1)], ["Billing"])
+        assert_equal [["folder", "folder:models"], ["class", "Order"]], paths["Order"]
+        assert_equal [["namespace", "Billing"], ["class", "Billing::Counter"]], paths["Billing::Counter"]
+      end
+
+      def test_given_paths_with_a_component_container_make_a_component_box_with_its_label_and_members
+        classes = [entry("Order", "models", 1), entry("User", "models", 0)]
+        paths = { "Order" => [["component", "component:p1/core", "Core"], ["class", "Order"]], "User" => [["component", "component:p1/core", "Core"], ["class", "User"]] }
+        views = Views.build(classes, [], [], [], paths: paths)
+        box = views["root"]["nodes"].first
+        assert_equal ["component:p1/core", "component", "Core", [0, 1]], box.values_at("id", "type", "label", "levels")
+        assert_equal %w[Order User], box["members"].map { |member| member["id"] }
+        assert_equal ["Core", "root"], views["component:p1/core"].values_at("label", "parent")
+      end
+
       def test_no_classes_give_an_empty_root_view
         assert_equal({ "root" => { "id" => "root", "label" => nil, "parent" => nil, "nodes" => [], "arrows" => [] } }, Views.build([], [], [], []))
       end

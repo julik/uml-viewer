@@ -3,13 +3,17 @@ require "set"
 module Uml
   module Viewer
     module Views
-      def self.build(classes, namespaces, edges, foreign_edges)
+      def self.paths(classes, namespaces)
         prefixes = classes.flat_map do |entry|
           segments = entry["id"].split("::")
           (1...segments.size).map { |count| segments.first(count).join("::") }
         end
         known = (namespaces + prefixes).to_set
-        paths = classes.to_h { |entry| [entry["id"], path(entry, known)] }
+        classes.to_h { |entry| [entry["id"], path(entry, known)] }
+      end
+
+      def self.build(classes, namespaces, edges, foreign_edges, paths: nil)
+        paths ||= self.paths(classes, namespaces)
         views = { "root" => view("root", nil, nil) }
         classes.each { |entry| place(views, paths[entry["id"]], entry) }
         foreign_edges.map { |edge| edge["to"] }.uniq.each do |name|
@@ -36,8 +40,8 @@ module Uml
 
       def self.place(views, path, entry)
         parent = "root"
-        path.each do |type, id|
-          node = views[parent]["nodes"][id] ||= node(type, id, entry)
+        path.each do |type, id, label|
+          node = views[parent]["nodes"][id] ||= node(type, id, entry, label)
           node["levels"] = widen(node["levels"], entry["level"])
           next if type == "class"
 
@@ -46,11 +50,12 @@ module Uml
         end
       end
 
-      def self.node(type, id, entry)
+      def self.node(type, id, entry, label = nil)
         case type
         when "class"
           { "id" => id, "type" => "class", "label" => id.split("::").last, "stereotype" => entry["stereotype"], "level" => entry["level"], "levels" => nil }
         when "folder" then { "id" => id, "type" => "folder", "label" => id.delete_prefix("folder:"), "levels" => nil }
+        when "component" then { "id" => id, "type" => "component", "label" => label, "levels" => nil }
         else { "id" => id, "type" => "namespace", "label" => id.split("::").last, "levels" => nil }
         end
       end
@@ -73,7 +78,7 @@ module Uml
 
       def self.finish(entry, views)
         nodes = entry["nodes"].values.sort_by { |node| node["id"] }.map do |node|
-          next node unless %w[namespace folder].include?(node["type"])
+          next node unless %w[namespace folder component].include?(node["type"])
 
           members = views[node["id"]]["nodes"].values.sort_by { |member| member["id"] }
           node.merge("members" => members.map { |member| member.slice("id", "type", "label") })
