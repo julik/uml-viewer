@@ -11,7 +11,7 @@ module Uml
       WEB = File.expand_path("web", __dir__)
       STATIC = { "/app.js" => "app.js", "/elk.js" => "elk.bundled.js" }.freeze
       MAX_BODY = 4096
-      SESSION_KEYS = %w[drill zoom scroll proposal].freeze
+      SESSION_KEYS = %w[drill zoom scroll proposal declutter].freeze
       EXPIRED = { "error" => "session expired: reopen with uml-viewer" }.freeze
 
       attr_reader :token
@@ -170,6 +170,7 @@ module Uml
           return "scroll must hold x and y numbers"
         end
         return "proposal must be an id or null" unless body["proposal"].nil? || body["proposal"].is_a?(String)
+        return "declutter must be a whole number from 0 to 4" unless body["declutter"].nil? || (body["declutter"].is_a?(Integer) && body["declutter"].between?(0, 4))
 
         nil
       end

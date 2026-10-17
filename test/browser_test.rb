@@ -719,6 +719,107 @@ module Uml
         assert_equal ["rails_shapes", "Reports"], crumbs
       end
 
+      def boot_two_way_project
+        reboot(build_project("app/models/order.rb" => "class Order\n  def price = Pricing.new\nend\n",
+                             "app/services/pricing.rb" => "class Pricing\n  def order = Order.new\nend\n"))
+      end
+
+      DECLUTTER_MODES = ["none", "one arrow per pair", "triangles", "hide members", "hide classes"].freeze
+
+      def declutter_to(mode)
+        mode.times { press("d") }
+        wait_for_text("#declutter", "declutter: #{DECLUTTER_MODES[mode]}")
+      end
+
+      def test_d_cycles_the_five_declutter_modes_and_the_button_names_each
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal "declutter: none", @browser.at_css("#declutter").text
+        ["one arrow per pair", "triangles", "hide members", "hide classes", "none"].each do |mode|
+          press("d")
+          wait_for_text("#declutter", "declutter: #{mode}")
+        end
+        @browser.at_css("#declutter").click
+        wait_for_text("#declutter", "declutter: one arrow per pair")
+      end
+
+      def test_one_arrow_per_pair_merges_both_directions_into_one_red_line_with_two_heads
+        boot_two_way_project
+        @browser.goto(@server.url)
+        wait_for('path.hit[data-from="folder:services"][data-to="folder:models"]')
+        assert_equal 2, @browser.css("path.hit").size
+        declutter_to(1)
+        wait_until(-> { "still #{@browser.css('path.hit').size} arrows" }) { @browser.css("path.hit").size == 1 }
+        assert @browser.at_css("path.arrow.violating.both")
+        hit = "path.hit"
+        @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))))
+        wait_for("#popup .pair")
+        assert_equal ["Order -> Pricing (dependency)", "Pricing -> Order (dependency)"], @browser.css("#popup .pair").map(&:text).sort
+      end
+
+      def test_triangles_hide_the_lines_and_keep_the_heads
+        boot_two_way_project
+        @browser.goto(@server.url)
+        wait_for("path.arrow")
+        declutter_to(2)
+        wait_until(-> { "the line is still drawn" }) do
+          @browser.evaluate(%(getComputedStyle(document.querySelector("path.arrow")).stroke)) == "rgba(0, 0, 0, 0)"
+        end
+        assert_match(/url\("?#head/, @browser.evaluate(%(getComputedStyle(document.querySelector("path.arrow")).markerEnd)))
+      end
+
+      def test_hide_members_draws_boxes_without_member_lines
+        @browser.goto(@server.url)
+        wait_for("text.member")
+        declutter_to(3)
+        wait_until(-> { "#{@browser.css('text.member').size} member lines left" }) { @browser.css("text.member").empty? }
+        assert @browser.at_css('g.box[data-id="Reports"]')
+      end
+
+      def test_hide_classes_leaves_only_boxes_and_says_why_a_view_of_classes_is_empty
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        declutter_to(4)
+        wait_for_text("text.note", "declutter hides all 2 classes in this view: press d")
+        assert_empty @browser.css("g.box.class")
+      end
+
+      def boot_mixed_view_project
+        reboot(build_project("app/services/billing/counter.rb" => "module Billing\n  class Counter\n    def client = Billing::Gateway::Client.new\n  end\nend\n",
+                             "app/services/billing/gateway/client.rb" => "module Billing\n  module Gateway\n    class Client\n      def counter = Billing::Counter.new\n    end\n  end\nend\n"))
+      end
+
+      def test_each_declutter_mode_keeps_the_effects_of_the_modes_before_it
+        boot_mixed_view_project
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Billing"] text.title')
+        wait_for('g.box.class[data-id="Billing::Counter"]')
+        assert_equal 2, @browser.css("path.hit").size
+        declutter_to(3)
+        wait_until(-> { "#{@browser.css('path.hit').size} arrows at hide members" }) { @browser.css("path.hit").size == 1 }
+        assert @browser.at_css("svg.triangles path.arrow.both")
+        assert_empty @browser.css("text.member")
+        press("d")
+        wait_for_text("#declutter", "declutter: hide classes")
+        wait_until(-> { "class nodes are still drawn" }) { @browser.css("g.box.class").empty? }
+        assert @browser.at_css('g.box[data-id="Billing::Gateway"]')
+        assert_empty @browser.css("path.hit")
+        assert_nil @browser.at_css("text.note")
+      end
+
+      def test_the_declutter_mode_survives_a_reload
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        declutter_to(3)
+        wait_until(-> { "session.json never held the mode" }) do
+          File.exist?(@workspace.path("session.json")) && JSON.parse(File.read(@workspace.path("session.json")))["declutter"] == 3
+        end
+        @browser.goto("http://127.0.0.1:#{@server.port}/")
+        wait_for_text("#declutter", "declutter: hide members")
+        assert_empty @browser.css("text.member")
+      end
+
       private
 
       def boot_coverage_project(resultset: :valid)

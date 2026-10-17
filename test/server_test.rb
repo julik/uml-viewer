@@ -145,6 +145,16 @@ module Uml
         assert_equal "413", request(:put, "/session", body: JSON.generate("drill" => ["x" * 5000])).code
       end
 
+      def test_the_session_stores_a_declutter_mode_and_refuses_a_bad_one
+        assert_equal "204", request(:put, "/session", body: '{"declutter":4}').code
+        assert_equal({ "declutter" => 4 }, JSON.parse(request(:get, "/session").body))
+        ['{"declutter":5}', '{"declutter":-1}', '{"declutter":1.5}', '{"declutter":"2"}'].each do |body|
+          response = request(:put, "/session", body: body)
+          assert_equal ["400", "declutter must be a whole number from 0 to 4"], [response.code, JSON.parse(response.body)["error"]]
+        end
+        assert_equal({ "declutter" => 4 }, JSON.parse(request(:get, "/session").body))
+      end
+
       def test_a_new_source_file_rescans_and_a_deleted_one_leaves_the_graph
         path = File.join(@project, "app/models/invoice.rb")
         File.write(path, "class Invoice\nend\n")
