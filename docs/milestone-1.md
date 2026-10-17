@@ -11,7 +11,7 @@ uml-viewer commit                                                               
 Permission mode (must be default)                                                        default (`claude --permission-mode default`)
 uml-viewer rules already in ~/.claude/settings*.json or project settings (must be none)  none (checked all four files)
 Idle session woke on the Monitor event                                                   yes (idle at 17:15, woke on "command 1 omit IsoWeek")
-Time from right-click Omit to policy.yml                                                 click time not noted; policy.yml saved 17:16:46
+Time from right-click Omit to policy.yml                                                 29 s (click 17:16:17, Monitor event 17:16:18, policy.yml saved 17:16:46)
 Permission prompts during the loop                                                       0
 Prompt to load the skill (Skill tool call)                                               no ("Successfully loaded skill, 8 tools allowed")
 Tool that prompted, if any                                                               none
@@ -31,4 +31,4 @@ Steps:
 
 Result: milestone 1 is done when the session woke and the prompt count is 0. When the session did not wake, stop and design the doorbell again before milestone 2.
 
-Result (2026-10-17): criterion 5b passes. The idle session woke on the Monitor event, and the loop (`inbox`, the `policy.yml` edit, `done`, `inbox`) ran with zero permission prompts. Loading the skill needed no prompt either. The automated 5a test and `rake eval:skill` cover the same loop.
+Result (2026-10-17): criterion 5b passes. The idle session woke on the Monitor event, and the loop (`inbox`, the `policy.yml` edit, `done`, `inbox`) ran with zero permission prompts. Loading the skill needed no prompt either. The session transcript confirms it: its only user messages are the start prompt and the Monitor notification, and it holds no permission request. The automated 5a test and `rake eval:skill` cover the same loop.
