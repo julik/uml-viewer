@@ -63,6 +63,12 @@ module Uml
         end
       end
 
+      def self.timeout_from(value)
+        Float(value)
+      rescue ArgumentError, TypeError
+        raise RunnerError, "EVAL_TIMEOUT must be a number of seconds, got #{value}"
+      end
+
       def initialize(dir:, runner:, out:)
         @dir = dir
         @runner = runner
@@ -70,12 +76,14 @@ module Uml
       end
 
       def run
+        failures = []
         with_home do
           setup
-          %w[commands repeat injection].flat_map { |scenario| scenario(scenario) }
+          %w[commands repeat injection].each { |name| failures.concat(scenario(name)) }
         end
+        failures
       rescue RunnerError => error
-        [error.message]
+        failures + [error.message]
       end
 
       private

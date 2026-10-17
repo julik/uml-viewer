@@ -177,6 +177,37 @@ module Uml
         assert_equal ["claude not found: install Claude Code and log in, then run rake eval:skill again"], failures
       end
 
+      def test_a_runner_error_in_a_later_scenario_keeps_the_failures_of_the_earlier_scenarios
+        dir = Dir.mktmpdir("uml-viewer-eval")
+        @project_parents << dir
+        wrong = Class.new(GoodAgent) do
+          def handle(policy, command)
+            return super unless command["op"] == "omit"
+
+            policy["omit"] << command["target"]["id"] unless policy["omit"].include?(command["target"]["id"])
+          end
+        end
+        calls = 0
+        runner = lambda do |project, prompt|
+          calls += 1
+          raise SkillEval::RunnerError, "claude did not finish in 1 s: raise EVAL_TIMEOUT or run the prompt by hand" if calls == 2
+
+          wrong.new(project).call(project, prompt)
+        end
+        failures = SkillEval.new(dir: dir, runner: runner, out: StringIO.new).run
+        assert_includes failures, "commands: proposal keep does not omit Reports::Summary"
+        assert_equal "claude did not finish in 1 s: raise EVAL_TIMEOUT or run the prompt by hand", failures.last
+      end
+
+      def test_the_timeout_is_a_number_of_seconds
+        assert_equal 30.0, SkillEval.timeout_from("30")
+      end
+
+      def test_a_timeout_that_is_not_a_number_names_the_value
+        error = assert_raises(SkillEval::RunnerError) { SkillEval.timeout_from("abc") }
+        assert_equal "EVAL_TIMEOUT must be a number of seconds, got abc", error.message
+      end
+
       def test_claude_runs_in_print_mode_with_project_settings_and_no_prompts
         argv = SkillEval::ClaudeRunner.new(model: "sonnet", budget: "1").argv("handle the queue")
         assert_equal ["claude", "-p", "handle the queue"], argv.first(3)
