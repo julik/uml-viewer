@@ -13,6 +13,7 @@ uml-viewer rules already in ~/.claude/settings*.json or project settings (must b
 Idle session woke on the Monitor event                                                   yes / no
 Time from right-click Omit to policy.yml                                                 seconds
 Permission prompts during the loop                                                       count (must be 0)
+Prompt to load the skill (Skill tool call)                                                yes / no
 Tool that prompted, if any
 Large app first screen readable                                                          yes / no, with a note
 ```
@@ -25,7 +26,7 @@ Steps:
   4. Start Claude Code in the default permission mode (no `--permission-mode`, no auto-accept). Ask: "watch the uml-viewer for <medium app>". Wait until the Monitor runs. Leave the session idle.
   5. In the browser, right-click a class and choose Omit. Note the time.
   6. In another terminal, run `stat -f %Sm "$(uml-viewer path <medium app>)/policy.yml"` to read the time the agent saved policy.yml.
-  7. Note the time when the class leaves the diagram. Count any permission prompts, and write down the tool of each prompt.
+  7. Note the time when the class leaves the diagram. Count any permission prompts, the one that loads the skill included, and write down the tool of each prompt.
   8. Open the large app and look at the first screen.
 
 Result: milestone 1 is done when the session woke and the prompt count is 0. When the session did not wake, stop and design the doorbell again before milestone 2.

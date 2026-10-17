@@ -16,3 +16,14 @@ task :smoke do
   failures = Uml::Viewer::Smoke.run(paths, out: $stdout)
   abort failures.join("\n") unless failures.empty?
 end
+
+desc "Run the skill with claude -p on a copy of the fixture project (manual; needs a logged-in claude; EVAL_MODEL, EVAL_BUDGET, EVAL_TIMEOUT)"
+task "eval:skill" do
+  $LOAD_PATH.unshift File.expand_path("lib", __dir__)
+  require "tmpdir"
+  require_relative "eval/skill_eval"
+  runner = Uml::Viewer::SkillEval::ClaudeRunner.new(model: ENV.fetch("EVAL_MODEL", "sonnet"), budget: ENV.fetch("EVAL_BUDGET", "1"),
+                                                    timeout: Float(ENV.fetch("EVAL_TIMEOUT", "600")))
+  failures = Dir.mktmpdir("uml-viewer-eval") { |dir| Uml::Viewer::SkillEval.new(dir: dir, runner: runner, out: $stdout).run }
+  abort failures.join("\n") unless failures.empty?
+end

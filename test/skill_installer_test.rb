@@ -64,6 +64,20 @@ module Uml
           assert_includes text, rule
         end
       end
+
+      def test_the_skill_explains_the_proposal_format_and_where_proposal_boxes_live
+        text = install("/x/uml-viewer")
+        assert_includes text, "The component order is the rank: the first component is level 0."
+        assert_includes text, "A member is a class id, a namespace id, a folder box id such as `folder:models`, or a nested component."
+        assert_includes text, "Boxes of a proposal view (`component:<proposal id>/<component id>`, `unassigned:<proposal id>`) are under `proposals[].views` in `graph.json`."
+      end
+
+      def test_propose_names_the_proposal_from_the_command_time_and_gives_the_full_shape
+        text = install("/x/uml-viewer")
+        assert_includes text, "`{id: p<command id>, name: \"Proposal <at>\", components: [], omit: []}`"
+        assert_includes text, "Take the time from the command's `at` field; do not run `date`."
+        refute_includes text, "a name with the current time"
+      end
     end
   end
 end
