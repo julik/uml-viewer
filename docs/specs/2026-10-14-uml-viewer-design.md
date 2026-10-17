@@ -621,7 +621,7 @@ project path does not exist              CLI error                              
 - **Milestone 2.** The full scanner rules (associations, Data.define, reopened classes), levels and red arrows, drill-down, class card, source panel, rescans. The ActiveAdmin pseudo-classes of section 4.2 move to a later milestone (user decision, 2026-10-16).
 - **Milestone 3.** Overlay (coverage, CRAP, mutation snapshot).
 - **Milestone 4.** Proposals, declutter modes, `rake eval:skill`.
-Milestone 4 rulings (2026-10-17): membership by most specific member, rank by top-level component, "Unassigned" without a level, cumulative declutter modes, the diagram choice in the top bar, graph format version 3, and rake eval:skill outside the gem in dontAsk mode.
+- Milestone 4 rulings (2026-10-17): membership by most specific member, rank by top-level component, "Unassigned" without a level, cumulative declutter modes, the diagram choice in the top bar, graph format version 3, and rake eval:skill outside the gem in dontAsk mode.
 - Publishing to RubyGems is a separate decision after the user has used it.
 
 ## 12. Later (not version 1)
