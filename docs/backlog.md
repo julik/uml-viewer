@@ -100,3 +100,8 @@ Tests:
   - `UML_VIEWER_HOME=""` (set and empty) makes the state folder relative to the working directory. Treat an empty value as not set.
   - A component with no class shows no box, so a new, empty component is invisible until it gets a member.
   - A policy.yml with YAML aliases (`&a` and `*a`) is refused with the Psych message "Alias parsing was not enabled". Claude writes plain YAML, so this is rare; the message could say "policy.yml must not use YAML aliases".
+  - PolicyFile: `name`, `label` and `omit` set to false take the default, and an empty name or label passes. No test that extra proposal and component keys survive.
+  - Tests: the graph test's c_grade check cannot tell nil. commands_test has no unit case for proposal_boxes (a p1 box under p2, a real box missing from a proposal view). No CLI test for a proposal warning.
+  - Page: renderChoice rebuilds the options on every graph change and closes an open dropdown. The gone-proposal fallback keeps a stale scroll position. The real diagram and every proposal share the scroll cache of "root". choice.blur() on each change breaks arrow-key browsing in the select (each arrow key posts a context command).
+  - Declutter: the merged arrow is red when only one direction is red (color each head by its own direction). The OR of the violating flags is tested only by arrow order. An invalid stored declutter value has no page test. No declutter test in a proposal view. Holding d auto-repeats.
+  - Proposals: omitting a namespace or folder box inside "Unassigned" also removes that namespace's or folder's classes from components (the omit is by name, not by box).
