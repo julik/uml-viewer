@@ -1,4 +1,4 @@
-# Backlog after milestone 3
+# Backlog after milestone 4
 
 The reviews of milestone 1 found these items. None of them blocks the 5b gate or loses data. Fold each item into the plan of the milestone that touches its code, and remove it here when it is fixed.
 
@@ -44,13 +44,12 @@ Visible to the user:
   - Zoom has no lower or upper bound, and the zoom value is saved as it is.
   - The crumbs show the new view before its layout is done.
   - A graph fetch that fails with an HTTP error shows "could not draw the graph: HTTP 500".
-  - Escape goes up a view instead of closing an open context menu.
   - A slow source response can land after a second click and show two files in the source panel.
   - A file that ends with a newline shows a numbered empty last line in the source panel.
   - The hover popup is not clamped to the window and can stay visible after a redraw removes the hovered arrow.
   - The open class card is not refreshed after a rescan, so its ops and line numbers can be stale.
   - A Regen that fails with an HTTP error says only the status, with no next step.
-  - graph.json is about 3.2 MB on the large app (no coverage) and about 0.8 MB on the legacy app with coverage; consider serving ops per class on demand.
+  - graph.json is about 3.2 MB on the large app (no coverage) and about 0.8 MB on the legacy app with coverage. Each proposal adds about 0.9 MB on the large app (5.9 MB with three proposals). Consider serving ops per class and proposal views on demand.
 
 Scanner and policy:
 
@@ -95,3 +94,9 @@ Tests:
   - No page test of a graded M dot, the "M grade N (score P%)" line or a box mean of C and M.
   - The coverage_test unreadable test loops over its inputs.
   - A SimpleCov oneshot_lines file reads as unreadable.
+
+## Found in milestone 4
+
+  - `UML_VIEWER_HOME=""` (set and empty) makes the state folder relative to the working directory. Treat an empty value as not set.
+  - A component with no class shows no box, so a new, empty component is invisible until it gets a member.
+  - A policy.yml with YAML aliases (`&a` and `*a`) is refused with the Psych message "Alias parsing was not enabled". Claude writes plain YAML, so this is rare; the message could say "policy.yml must not use YAML aliases".
