@@ -76,6 +76,7 @@ Findings, ruled into Task 7:
 - **The skill's `allowed-tools` do not cover the call that loads the skill.** The eval pre-allows `Skill(uml-viewer)` and nothing else. Whether an interactive session in the default mode asks before it loads the skill is a question for the manual 5b gate; `docs/milestone-1.md` gets that line.
 - **"A name with the current time" makes the agent run `date`.** The skill now says to take the time from the command's `at` field.
 - **The agent guessed the proposal shape.** The skill now gives it: `{id: p<command id>, name: "Proposal <at>", components: [], omit: []}`.
+- **Real `rake eval:skill` run** (Task 7 Step 9, user, 2026-10-17, at da4cb1a, sonnet): PASS commands ($0.15, 15 turns), PASS repeat ($0.08, 12 turns), PASS injection ($0.13, 14 turns); 98 s in total; no permission denial, so the skill's `allowed-tools` cover the whole loop once the skill is loaded.
 - The JSON result has `permission_denials` as a list of `{tool_name, tool_use_id, tool_input}`, `total_cost_usd`, `num_turns`, `is_error` and `result`, as `ClaudeRunner` reads them.
 
 ## Scope rulings for milestone 4
