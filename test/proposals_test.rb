@@ -118,6 +118,18 @@ module Uml
         assert_equal ["Report", "Shop::Customer"], all_nodes(views).select { |node| node["type"] == "class" }.map { |node| node["id"] }.sort
       end
 
+      def test_the_proposal_omit_removes_classes_that_sit_in_components_by_id_namespace_and_folder
+        classes = [entry("Order", "models"), entry("User", "models"), entry("Billing::Counter", "services"), entry("Keep", "services")]
+        components = [component("a", ["Order"]), component("m", ["Billing::Counter"]), component("d", ["User"])]
+        views = build(proposal(components, omit: ["Order", "Billing", "folder:models"]), classes, [], ["Billing"])["views"]
+        assert_equal ["Keep"], all_nodes(views).select { |node| node["type"] == "class" }.map { |node| node["id"] }
+      end
+
+      def test_a_member_listed_in_two_components_that_matches_no_class_gives_one_warning
+        result = build(proposal([component("one", ["Ghost"]), component("two", ["Ghost"])]), [entry("Order", "models")])
+        assert_equal ["proposal p1: member Ghost matches no class in the diagram (check the name and the policy omit)"], result["warnings"]
+      end
+
       def test_omitting_unassigned_hides_every_class_in_no_component
         views = build(proposal([component("core", ["Order"])], omit: ["unassigned:p1"]), [entry("Order", "models"), entry("User", "models")])["views"]
         assert_equal ["component:p1/core"], views["root"]["nodes"].map { |node| node["id"] }
