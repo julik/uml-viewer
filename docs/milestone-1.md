@@ -5,17 +5,17 @@ Fill this in by hand after a real session. Use the medium test app; do not name 
 ```
 Field                                                                                    Value
 -----                                                                                    -----
-Date
-Claude Code version
-uml-viewer commit
-Permission mode (must be default)
-uml-viewer rules already in ~/.claude/settings*.json or project settings (must be none)
-Idle session woke on the Monitor event                                                   yes / no
-Time from right-click Omit to policy.yml                                                 seconds
-Permission prompts during the loop                                                       count (must be 0)
-Prompt to load the skill (Skill tool call)                                               yes / no
-Tool that prompted, if any
-Large app first screen readable                                                          yes / no, with a note
+Date                                                                                     2026-10-17
+Claude Code version                                                                      2.1.302
+uml-viewer commit                                                                        7f305ea (main, after milestone 4)
+Permission mode (must be default)                                                        default (`claude --permission-mode default`)
+uml-viewer rules already in ~/.claude/settings*.json or project settings (must be none)  none (checked all four files)
+Idle session woke on the Monitor event                                                   yes (idle at 17:15, woke on "command 1 omit IsoWeek")
+Time from right-click Omit to policy.yml                                                 click time not noted; policy.yml saved 17:16:46
+Permission prompts during the loop                                                       0
+Prompt to load the skill (Skill tool call)                                               no ("Successfully loaded skill, 8 tools allowed")
+Tool that prompted, if any                                                               none
+Large app first screen readable                                                          not checked in this run
 ```
 
 Steps:
@@ -30,3 +30,5 @@ Steps:
   8. Open the large app and look at the first screen.
 
 Result: milestone 1 is done when the session woke and the prompt count is 0. When the session did not wake, stop and design the doorbell again before milestone 2.
+
+Result (2026-10-17): criterion 5b passes. The idle session woke on the Monitor event, and the loop (`inbox`, the `policy.yml` edit, `done`, `inbox`) ran with zero permission prompts. Loading the skill needed no prompt either. The automated 5a test and `rake eval:skill` cover the same loop.
