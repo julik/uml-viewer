@@ -13,13 +13,16 @@ module Uml
         edges = adjust_edges(edges, policy["edge_kinds"], policy["omit_edges"])
                 .map { |edge| edge.merge("violating" => violating?(edge, by_id)) }
         foreign_edges = scan["foreign_edges"].select { |edge| policy["foreign"].include?(edge["to"]) && by_id.key?(edge["from"]) }
+        proposals = Proposals.build(policy["proposals"], classes: classes, namespaces: namespaces, edges: edges, foreign_edges: foreign_edges)
         {
           "classes" => classes,
           "edges" => edges,
           "namespaces" => namespaces,
           "views" => Views.build(classes, namespaces, edges, foreign_edges),
           "foreign_edges" => foreign_edges,
-          "warnings" => (policy["levels"].flatten.uniq - scan["folders"]).map { |name| "levels: unknown folder #{name}" }
+          "proposals" => proposals,
+          "warnings" => (policy["levels"].flatten.uniq - scan["folders"]).map { |name| "levels: unknown folder #{name}" } +
+                        proposals.flat_map { |proposal| proposal["warnings"] }
         }
       end
 

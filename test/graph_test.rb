@@ -49,8 +49,8 @@ module Uml
         refute_includes ids["class"], "folder:models"
       end
 
-      def test_graph_json_is_version_2_with_views_and_no_boxes
-        assert_equal [2, true, false], [graph["version"], graph["views"].key?("Reports"), graph.key?("boxes")]
+      def test_graph_json_is_version_3_with_views_and_no_boxes
+        assert_equal [3, true, false], [graph["version"], graph["views"].key?("Reports"), graph.key?("boxes")]
       end
 
       def test_an_invalid_policy_raises_and_keeps_the_old_graph
@@ -191,6 +191,27 @@ module Uml
         inputs = Graph.inputs(workspace)
         assert_includes inputs.keys, File.join(workspace.root, "coverage", ".resultset.json")
         assert_includes inputs.keys, workspace.path("mutation.json")
+      end
+
+      def add_proposal(workspace, proposal)
+        policy = YAML.safe_load(File.read(workspace.path("policy.yml")))
+        policy["proposals"] = [proposal]
+        workspace.write_atomic("policy.yml", YAML.dump(policy))
+      end
+
+      def test_a_proposal_reaches_the_graph_with_graded_views_and_its_boxes_count_as_targets
+        workspace = Workspace.new(project_copy)
+        Graph.prepare(workspace)
+        add_proposal(workspace, "id" => "p1", "name" => "Trial", "components" => [{ "id" => "core", "members" => ["Reports"] }])
+        graph = Graph.build(workspace)
+        proposal = graph["proposals"].first
+        assert_equal ["p1", "Trial"], proposal.values_at("id", "name")
+        core = proposal["views"]["root"]["nodes"].find { |node| node["id"] == "component:p1/core" }
+        assert core.key?("c_grade")
+        ids = Graph.ids(graph)
+        assert_includes ids["proposal_boxes"]["p1"], "component:p1/core"
+        assert_includes ids["proposal_boxes"]["p1"], "unassigned:p1"
+        refute_includes ids["box"], "component:p1/core"
       end
     end
   end

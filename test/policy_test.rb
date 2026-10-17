@@ -169,6 +169,23 @@ module Uml
         graph = apply(input, "levels" => [["models"], ["lib"], ["workers"]])
         assert_equal ["levels: unknown folder workers"], graph["warnings"]
       end
+
+      def test_proposals_get_their_own_views_and_their_warnings_reach_the_policy_warnings
+        proposals = [{ "id" => "p1", "name" => "Trial", "omit" => [],
+                       "components" => [{ "id" => "core", "label" => "Core", "members" => ["Reports", "Ghost"] }, { "id" => "data", "label" => "Data", "members" => ["Order"] }] }]
+        graph = apply(scan({ "Order" => "models", "Reports::Summary" => "services" }, [["Order", "Reports::Summary"], ["Reports::Summary", "Order"]], ["Reports"]), "proposals" => proposals)
+        views = graph["proposals"].first["views"]
+        assert_equal ["component:p1/core", "component:p1/data"], views["root"]["nodes"].map { |node| node["id"] }
+        assert_equal [["component:p1/core", "component:p1/data"]], views["root"]["arrows"].select { |arrow| arrow["violating"] }.map { |arrow| arrow.values_at("from", "to") }
+        assert_includes graph["warnings"], "proposal p1: member Ghost matches no class in the diagram (check the name and the policy omit)"
+        assert graph["edges"].find { |edge| edge["from"] == "Order" }["violating"]
+      end
+
+      def test_the_policy_omit_also_leaves_every_proposal
+        proposals = [{ "id" => "p1", "name" => "Trial", "omit" => [], "components" => [{ "id" => "core", "label" => "Core", "members" => ["Order"] }] }]
+        graph = apply(scan({ "Order" => "models", "User" => "models" }, []), "omit" => ["User"], "proposals" => proposals)
+        assert_equal ["component:p1/core"], graph["proposals"].first["views"]["root"]["nodes"].map { |node| node["id"] }
+      end
     end
   end
 end

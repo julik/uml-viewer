@@ -26,9 +26,11 @@ module Uml
         summary["coverage"] = overlay["coverage"].merge("banner" => coverage_error || overlay["coverage"]["banner"])
         summary["warnings"] += [mutation_error].compact
         graph = {
-          "version" => 2,
+          "version" => 3,
           "title" => policy["title"].empty? ? File.basename(workspace.root) : policy["title"],
-          "proposals" => policy["proposals"],
+          "proposals" => applied["proposals"].map do |proposal|
+            proposal.slice("id", "name").merge("views" => Overlay.boxes(proposal["views"], overlay["classes"], policy["crap_cutoffs"]))
+          end,
           "summary" => summary,
           "namespaces" => applied["namespaces"],
           "classes" => overlay["classes"],
@@ -79,9 +81,15 @@ module Uml
       end
 
       def self.ids(graph)
-        boxes = graph["views"].values.flat_map { |view| view["nodes"] }
-                              .select { |node| %w[namespace folder].include?(node["type"]) }.map { |node| node["id"] }
-        { "class" => Set.new(graph["classes"].map { |entry| entry["id"] }), "box" => Set.new(boxes) }
+        {
+          "class" => Set.new(graph["classes"].map { |entry| entry["id"] }),
+          "box" => box_ids(graph["views"]),
+          "proposal_boxes" => graph.fetch("proposals", []).to_h { |proposal| [proposal["id"], box_ids(proposal["views"])] }
+        }
+      end
+
+      def self.box_ids(views)
+        Set.new(views.values.flat_map { |view| view["nodes"] }.select { |node| Overlay::BOXES.include?(node["type"]) }.map { |node| node["id"] })
       end
 
       def self.inputs(workspace)

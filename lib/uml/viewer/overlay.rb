@@ -7,6 +7,7 @@ module Uml
       UNTESTED = "no test runs these methods".freeze
       PARTIAL = "coverage looks partial: run the full suite".freeze
       COUNTS = %w[killed survived uncovered].freeze
+      BOXES = %w[namespace folder component].freeze
 
       def self.apply(classes, coverage:, mtimes:, mutation:, cutoffs:, missing_note: NO_COVERAGE)
         files = classes.flat_map { |entry| entry["files"] }.uniq
@@ -131,7 +132,7 @@ module Uml
 
       def self.node_grades(node, views, by_id, cutoffs, memo)
         return class_grades(by_id[node["id"]]) if node["type"] == "class"
-        return {} unless %w[namespace folder].include?(node["type"])
+        return {} unless BOXES.include?(node["type"])
 
         entries = classes_under(node["id"], views, memo).filter_map { |id| by_id[id] }
         pooled(entries, cutoffs)
@@ -155,7 +156,7 @@ module Uml
         memo[view_id] ||= views[view_id]["nodes"].flat_map do |node|
           case node["type"]
           when "class" then [node["id"]]
-          when "namespace", "folder" then classes_under(node["id"], views, memo)
+          when *BOXES then classes_under(node["id"], views, memo)
           else []
           end
         end

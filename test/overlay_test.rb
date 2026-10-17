@@ -198,6 +198,14 @@ module Uml
         nodes = Overlay.boxes(Views.build(entries, ["Dead", "Live"], [], []), classes, CUTOFFS)["root"]["nodes"]
         assert_equal [1, 10], %w[Dead Live].map { |id| nodes.find { |node| node["id"] == id }["c_grade"] }
       end
+
+      def test_a_component_box_pools_the_grades_of_its_classes
+        classes = apply([klass("Order", [op("total", 1, 1, 3)])], lines: { "app/models/order.rb" => [1, 1, nil] })["classes"]
+        views = { "root" => { "nodes" => [{ "id" => "component:p1/core", "type" => "component" }] },
+                  "component:p1/core" => { "nodes" => [{ "id" => "Order", "type" => "class" }] } }
+        node = Overlay.boxes(views, classes, CUTOFFS)["root"]["nodes"].first
+        assert_equal 10, node["c_grade"]
+      end
     end
   end
 end

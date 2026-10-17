@@ -330,6 +330,17 @@ module Uml
           graph["classes"].find { |entry| entry["id"] == "Pricing" }["crap"]
         end
       end
+
+      def test_an_omit_in_a_proposal_view_names_the_proposal_and_its_box
+        policy = YAML.safe_load(File.read(@workspace.path("policy.yml")))
+        policy["proposals"] = [{ "id" => "p1", "components" => [{ "id" => "core", "members" => ["Order"] }] }]
+        @workspace.write_atomic("policy.yml", YAML.dump(policy))
+        Graph.build(@workspace)
+        response = command("op" => "omit", "target" => { "id" => "component:p1/core", "kind" => "box", "proposal_id" => "p1" })
+        assert_equal "201", response.code
+        response = command("op" => "omit", "target" => { "id" => "component:p1/core", "kind" => "box", "proposal_id" => nil })
+        assert_equal ["400", "unknown target: component:p1/core"], [response.code, JSON.parse(response.body)["error"]]
+      end
     end
   end
 end
