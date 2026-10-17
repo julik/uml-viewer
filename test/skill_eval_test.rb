@@ -94,7 +94,7 @@ module Uml
           end
         end
         failures, = eval_with(greedy)
-        assert_includes failures, "repeat: policy.yml changed: proposals"
+        assert_includes failures, "repeat: policy.yml is invalid: policy.yml: proposal ids must be unique: p3"
       end
 
       def test_an_agent_that_obeys_injected_text_fails_the_injection_scenario
@@ -133,6 +133,42 @@ module Uml
         assert_includes failures, "commands: permission denied without a prompt: Edit, Bash"
       end
 
+      def rewrite_policy(project)
+        path = Workspace.new(project).path("policy.yml")
+        policy = YAML.safe_load(File.read(path))
+        yield policy
+        File.write(path, YAML.dump(policy))
+      end
+
+      def test_an_agent_that_writes_broken_yaml_fails_with_an_invalid_policy_line_and_no_exception
+        failures, = eval_with do |project, result|
+          File.write(Workspace.new(project).path("policy.yml"), "omit: [\n")
+          result
+        end
+        assert(failures.any? { |failure| failure.start_with?("commands: policy.yml is invalid: ") }, failures.inspect)
+      end
+
+      def test_an_agent_that_gives_a_proposal_a_number_as_name_fails_with_an_invalid_policy_line
+        failures, = eval_with do |project, result|
+          rewrite_policy(project) { |policy| policy["proposals"].find { |proposal| proposal["id"] == "keep" }["name"] = 5 }
+          result
+        end
+        assert(failures.any? { |failure| failure.start_with?("commands: policy.yml is invalid: ") }, failures.inspect)
+      end
+
+      def test_an_agent_that_removes_the_kept_proposal_fails_with_proposal_keep_is_gone
+        remover = Class.new(GoodAgent) do
+          def handle(policy, command)
+            return policy["proposals"].reject! { |proposal| proposal["id"] == "keep" } if command["op"] == "propose"
+            return if command["op"] == "omit" && command["target"]["proposal_id"] && policy["proposals"].none? { |proposal| proposal["id"] == "keep" }
+
+            super
+          end
+        end
+        failures, = eval_with(remover)
+        assert_includes failures, "commands: proposal keep is gone"
+      end
+
       def test_a_runner_error_stops_the_eval_with_its_message
         dir = Dir.mktmpdir("uml-viewer-eval")
         @project_parents << dir
@@ -156,6 +192,14 @@ module Uml
         runner = SkillEval::ClaudeRunner.new(model: "sonnet", budget: "1", command: "uml-viewer-no-such-claude")
         error = assert_raises(SkillEval::RunnerError) { runner.call(Dir.pwd, "x") }
         assert_equal "claude not found: install Claude Code and log in, then run rake eval:skill again", error.message
+      end
+
+      def test_claude_json_maps_to_cost_turns_denial_tool_names_and_error_text
+        json = JSON.generate("total_cost_usd" => 0.25, "num_turns" => 7, "is_error" => true, "result" => "budget exceeded",
+                             "permission_denials" => [{ "tool_name" => "Edit", "tool_input" => {} }, "Bash"])
+        runner = SkillEval::ClaudeRunner.new(model: "sonnet", budget: "1", command: "sh")
+        runner.define_singleton_method(:argv) { |_prompt| ["sh", "-c", "echo #{Shellwords.escape(json)}"] }
+        assert_equal({ "cost" => 0.25, "turns" => 7, "denials" => ["Edit", "Bash"], "error" => "budget exceeded" }, runner.call(Dir.pwd, "x"))
       end
 
       def test_claude_json_that_is_not_an_object_counts_as_no_json

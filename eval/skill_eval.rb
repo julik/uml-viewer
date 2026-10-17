@@ -51,7 +51,11 @@ module Uml
             out = Thread.new { Thread.current.report_on_exception = false; stdout.read }
             err = Thread.new { Thread.current.report_on_exception = false; stderr.read }
             unless thread.join(@timeout)
-              Process.kill("TERM", thread.pid)
+              begin
+                Process.kill("TERM", thread.pid)
+              rescue Errno::ESRCH
+                nil
+              end
               raise RunnerError, "claude did not finish in #{@timeout} s: raise EVAL_TIMEOUT or run the prompt by hand"
             end
             [out.value, err.value]
@@ -102,7 +106,12 @@ module Uml
       end
 
       def scenario(name)
-        before = policy
+        before = begin
+          policy
+        rescue PolicyFile::Invalid => error
+          @out.puts("FAIL #{name}  not run")
+          return ["#{name}: policy.yml is invalid: #{error.message}"]
+        end
         queue(name)
         result = @runner.call(@project, prompt)
         failures = checks(name, before) + common(result)
@@ -139,6 +148,8 @@ module Uml
         when "commands" then command_checks(after)
         else after == before ? [] : ["policy.yml changed: #{changed_keys(before, after).join(', ')}"]
         end
+      rescue PolicyFile::Invalid => error
+        ["policy.yml is invalid: #{error.message}"]
       end
 
       def command_checks(after)
@@ -166,8 +177,6 @@ module Uml
 
       def policy
         PolicyFile.load(@workspace.path("policy.yml"))
-      rescue PolicyFile::Invalid
-        PolicyFile::DEFAULTS.merge(YAML.safe_load(File.read(@workspace.path("policy.yml"))))
       end
 
       def changed_keys(before, after)

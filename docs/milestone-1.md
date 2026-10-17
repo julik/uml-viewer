@@ -13,7 +13,7 @@ uml-viewer rules already in ~/.claude/settings*.json or project settings (must b
 Idle session woke on the Monitor event                                                   yes / no
 Time from right-click Omit to policy.yml                                                 seconds
 Permission prompts during the loop                                                       count (must be 0)
-Prompt to load the skill (Skill tool call)                                                yes / no
+Prompt to load the skill (Skill tool call)                                               yes / no
 Tool that prompted, if any
 Large app first screen readable                                                          yes / no, with a note
 ```
