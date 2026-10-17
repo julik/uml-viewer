@@ -3,6 +3,8 @@ require "set"
 module Uml
   module Viewer
     module Views
+      BOXES = %w[namespace folder component].freeze
+
       def self.paths(classes, namespaces)
         prefixes = classes.flat_map do |entry|
           segments = entry["id"].split("::")
@@ -78,7 +80,7 @@ module Uml
 
       def self.finish(entry, views)
         nodes = entry["nodes"].values.sort_by { |node| node["id"] }.map do |node|
-          next node unless %w[namespace folder component].include?(node["type"])
+          next node unless BOXES.include?(node["type"])
 
           members = views[node["id"]]["nodes"].values.sort_by { |member| member["id"] }
           node.merge("members" => members.map { |member| member.slice("id", "type", "label") })

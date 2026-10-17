@@ -89,7 +89,7 @@ module Uml
       end
 
       def self.box_ids(views)
-        Set.new(views.values.flat_map { |view| view["nodes"] }.select { |node| Overlay::BOXES.include?(node["type"]) }.map { |node| node["id"] })
+        Set.new(views.values.flat_map { |view| view["nodes"] }.select { |node| Views::BOXES.include?(node["type"]) }.map { |node| node["id"] })
       end
 
       def self.inputs(workspace)
