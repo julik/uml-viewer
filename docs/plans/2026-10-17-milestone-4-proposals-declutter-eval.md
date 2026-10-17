@@ -28,7 +28,7 @@
 - Every test sets `UML_VIEWER_HOME` to a temp folder (the test helper does this).
 - Do not edit `lib/uml/viewer/web/elk.bundled.js`.
 
-## Real examples (to be confirmed by the user before the eng-review)
+## Real examples (confirmed by the user on 2026-10-17)
 
 From a read-only scan of the medium app on 2026-10-17 with its real `policy.yml` (models 0, services and lib 1, jobs 2, controllers 3) and one trial proposal of five components. The tests use the same shapes with changed names. `Shift`, `WeekNumber`, `ShiftsController`, `Employee`, `Exports::SheetRenderer` and `Rostering::Corrections::*` stand for the real classes.
 
