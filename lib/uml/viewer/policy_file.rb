@@ -115,7 +115,7 @@ module Uml
           next member if member.is_a?(String)
           next components(proposal_id, [member], seen).first if member.is_a?(Hash)
 
-          raise Invalid, "#{prefix}: a member is a name or a component"
+          raise Invalid, "#{prefix}: a member is a name or a component, not #{member.inspect}"
         end
         component.merge("label" => label, "members" => members)
       end

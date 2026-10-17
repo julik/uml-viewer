@@ -105,7 +105,7 @@ module Uml
           "proposals:\n  - id: p1\n    components:\n      - id: a\n        members:\n          - id: a\n" => "policy.yml: proposal p1: component ids must be unique: a",
           "proposals:\n  - id: p1\n    components:\n      - id: a\n        label: 3\n" => "policy.yml: proposal p1: component a: label must be text",
           "proposals:\n  - id: p1\n    components:\n      - id: a\n        members: Order\n" => "policy.yml: proposal p1: component a: members must be a list",
-          "proposals:\n  - id: p1\n    components:\n      - id: a\n        members: [3]\n" => "policy.yml: proposal p1: component a: a member is a name or a component"
+          "proposals:\n  - id: p1\n    components:\n      - id: a\n        members: [3]\n" => "policy.yml: proposal p1: component a: a member is a name or a component, not 3"
         }.each do |text, message|
           error = assert_raises(PolicyFile::Invalid, text) { PolicyFile.load(write(text)) }
           assert_equal message, error.message
