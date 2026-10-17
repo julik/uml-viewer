@@ -72,9 +72,44 @@ module Uml
         end
       end
 
-      def test_a_proposal_with_an_id_loads
-        policy = PolicyFile.load(write("proposals:\n  - id: p1\n    name: first\n"))
-        assert_equal [{ "id" => "p1", "name" => "first" }], policy["proposals"]
+      def test_a_proposal_with_an_id_loads_with_its_defaults_filled_in
+        policy = PolicyFile.load(write("proposals:\n  - id: p1\n    name: first\n  - id: p2\n"))
+        assert_equal [{ "id" => "p1", "name" => "first", "components" => [], "omit" => [] },
+                      { "id" => "p2", "name" => "p2", "components" => [], "omit" => [] }], policy["proposals"]
+      end
+
+      def test_components_get_a_label_and_nested_components_load
+        text = "proposals:\n  - id: p1\n    components:\n      - id: core\n        members:\n          - Order\n          - id: billing\n            label: Billing\n            members: [Billing]\n"
+        component = PolicyFile.load(write(text))["proposals"].first["components"].first
+        assert_equal "core", component["label"]
+        assert_equal "Order", component["members"][0]
+        assert_equal({ "id" => "billing", "label" => "Billing", "members" => ["Billing"] }, component["members"][1])
+      end
+
+      def test_a_component_without_members_gets_an_empty_list
+        component = PolicyFile.load(write("proposals:\n  - id: p1\n    components:\n      - id: core\n"))["proposals"].first["components"].first
+        assert_equal [], component["members"]
+      end
+
+      def test_each_wrong_proposal_shape_names_the_proposal_and_the_problem
+        {
+          "proposals:\n  - id: ''\n" => "policy.yml: a proposal id must be text",
+          "proposals:\n  - id: 3\n" => "policy.yml: a proposal id must be text",
+          "proposals:\n  - id: p1\n    components:\n      - id: 4\n" => "policy.yml: proposal p1: a component id must be text",
+          "proposals:\n  - id: p1\n  - id: p1\n" => "policy.yml: proposal ids must be unique: p1",
+          "proposals:\n  - id: p1\n    name: [a]\n" => "policy.yml: proposal p1: name must be text",
+          "proposals:\n  - id: p1\n    omit: Order\n" => "policy.yml: proposal p1: omit must be a list of names",
+          "proposals:\n  - id: p1\n    components: core\n" => "policy.yml: proposal p1: components must be a list",
+          "proposals:\n  - id: p1\n    components: [core]\n" => "policy.yml: proposal p1: each component must be a mapping with an id",
+          "proposals:\n  - id: p1\n    components:\n      - id: a\n      - id: a\n" => "policy.yml: proposal p1: component ids must be unique: a",
+          "proposals:\n  - id: p1\n    components:\n      - id: a\n        members:\n          - id: a\n" => "policy.yml: proposal p1: component ids must be unique: a",
+          "proposals:\n  - id: p1\n    components:\n      - id: a\n        label: 3\n" => "policy.yml: proposal p1: component a: label must be text",
+          "proposals:\n  - id: p1\n    components:\n      - id: a\n        members: Order\n" => "policy.yml: proposal p1: component a: members must be a list",
+          "proposals:\n  - id: p1\n    components:\n      - id: a\n        members: [3]\n" => "policy.yml: proposal p1: component a: a member is a name or a component"
+        }.each do |text, message|
+          error = assert_raises(PolicyFile::Invalid, text) { PolicyFile.load(write(text)) }
+          assert_equal message, error.message
+        end
       end
 
       def test_a_list_key_without_a_value_gives_the_empty_default
