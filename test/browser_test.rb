@@ -709,6 +709,15 @@ module Uml
         wait_until(-> { "session.json still names the gone proposal" }) { File.exist?(@workspace.path("session.json")) && JSON.parse(File.read(@workspace.path("session.json")))["proposal"].nil? }
       end
 
+      def test_a_stored_proposal_that_is_gone_falls_back_to_the_real_diagram_without_a_draw_error
+        @workspace.write_atomic("session.json", JSON.generate("proposal" => "gone", "drill" => ["root", "component:gone/x"]))
+        @browser.goto(@server.url)
+        wait_for_text("#toast", "proposal gone is gone: showing the real diagram")
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal ["rails_shapes"], crumbs
+        refute_includes @browser.at_css("#banner").text, "could not draw"
+      end
+
       def test_escape_closes_an_open_context_menu_before_it_leaves_the_view
         @browser.goto(@server.url)
         double_click('g.box[data-id="Reports"] text.title')
