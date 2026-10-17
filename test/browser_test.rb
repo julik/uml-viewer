@@ -751,6 +751,7 @@ module Uml
         declutter_to(1)
         wait_until(-> { "still #{@browser.css('path.hit').size} arrows" }) { @browser.css("path.hit").size == 1 }
         assert @browser.at_css("path.arrow.violating.both")
+        assert_match(/#head-red/, @browser.evaluate(%(getComputedStyle(document.querySelector("path.arrow.both")).markerStart)))
         hit = "path.hit"
         @browser.evaluate(%(document.querySelector('#{hit}').dispatchEvent(new MouseEvent("mouseover", { bubbles: true, clientX: 100, clientY: 100 }))))
         wait_for("#popup .pair")
@@ -799,13 +800,29 @@ module Uml
         declutter_to(3)
         wait_until(-> { "#{@browser.css('path.hit').size} arrows at hide members" }) { @browser.css("path.hit").size == 1 }
         assert @browser.at_css("svg.triangles path.arrow.both")
+        assert_match(/#head"?\)/, @browser.evaluate(%(getComputedStyle(document.querySelector("svg.triangles path.arrow.both")).markerStart)))
         assert_empty @browser.css("text.member")
         press("d")
         wait_for_text("#declutter", "declutter: hide classes")
         wait_until(-> { "class nodes are still drawn" }) { @browser.css("g.box.class").empty? }
+        assert_empty @browser.css("text.member")
+        assert @browser.at_css("svg.triangles")
         assert @browser.at_css('g.box[data-id="Billing::Gateway"]')
         assert_empty @browser.css("path.hit")
         assert_nil @browser.at_css("text.note")
+      end
+
+      def test_the_d_key_ignores_ctrl_and_a_focused_select
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        press("d", ctrl: true)
+        @browser.execute(%(document.getElementById("proposal").focus()))
+        press("d")
+        press("d", ctrl: true)
+        assert_equal "declutter: none", @browser.at_css("#declutter").text
+        @browser.execute(%(document.activeElement.blur()))
+        press("d")
+        wait_for_text("#declutter", "declutter: one arrow per pair")
       end
 
       def test_the_declutter_mode_survives_a_reload
