@@ -1,5 +1,6 @@
 require "test_helper"
 require "ferrum"
+require "yaml"
 require "timeout"
 
 module Uml
@@ -596,6 +597,126 @@ module Uml
           })()
         JS
         assert clear, "the M dot overlaps the last member line"
+      end
+
+      def add_proposal(proposal)
+        policy = YAML.safe_load(File.read(@workspace.path("policy.yml")))
+        policy["proposals"] = [proposal].compact
+        @workspace.write_atomic("policy.yml", YAML.dump(policy))
+        Graph.build(@workspace)
+      end
+
+      def reports_first
+        { "id" => "p1", "name" => "Reports first", "components" => [{ "id" => "reports", "members" => ["Reports"] }, { "id" => "orders", "members" => ["Order"] }] }
+      end
+
+      def choose(value)
+        @browser.execute(%(const s = document.getElementById("proposal"); s.focus(); s.value = #{value.to_json}; s.dispatchEvent(new Event("change"))))
+      end
+
+      def queued_ops
+        Mailbox.new(@workspace).queue.map { |command| [command["op"], command.dig("target", "proposal_id")] }
+      end
+
+      def test_choosing_a_proposal_draws_its_components_with_its_own_red_arrows_and_posts_context
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        wait_for('g.box.component[data-id="component:p1/reports"]')
+        assert @browser.at_css('path.hit.violating[data-from="component:p1/reports"][data-to="component:p1/orders"]')
+        assert_equal ["Reports first"], crumbs
+        wait_until(-> { "the queue held #{queued_ops.inspect}" }) { queued_ops == [["context", "p1"]] }
+        choose("")
+        wait_for('g.box[data-id="folder:models"]')
+        wait_until(-> { "the queue held #{queued_ops.inspect}" }) { queued_ops.last == ["context", nil] }
+      end
+
+      def test_a_right_click_in_a_proposal_view_names_the_proposal
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        right_click_menu('g.box.component[data-id="component:p1/orders"] text.title', "omit")
+        wait_until(-> { "the queue held #{Mailbox.new(@workspace).queue.inspect}" }) do
+          Mailbox.new(@workspace).queue.any? { |command| command["op"] == "omit" && command["target"] == { "id" => "component:p1/orders", "kind" => "box", "proposal_id" => "p1" } }
+        end
+      end
+
+      def test_a_double_click_on_a_component_opens_it
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        double_click('g.box.component[data-id="component:p1/reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"]')
+        assert_equal ["Reports first", "reports"], crumbs
+        double_click('g.box.class[data-id="Reports::Summary"] text.title')
+        wait_for_text("#card", "real level 1")
+      end
+
+      def test_a_folder_line_inside_unassigned_is_marked_and_opens_on_a_double_click
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        line = wait_for('g.box[data-id="unassigned:p1"] text.member[data-id="folder:services"]')
+        assert_equal "▸ services", line.text
+        double_click('g.box[data-id="unassigned:p1"] text.member[data-id="folder:services"]')
+        wait_for('g.box.class[data-id="Pricing"]')
+      end
+
+      def test_d_cycles_declutter_right_after_a_proposal_is_chosen
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        wait_for('g.box.component[data-id="component:p1/reports"]')
+        press("d")
+        wait_for_text("#declutter", "declutter: one arrow per pair")
+      end
+
+      def test_new_proposal_posts_a_propose_command
+        @browser.goto(@server.url)
+        wait_for("#propose").click
+        wait_until(-> { "the queue held #{queued_ops.inspect}" }) { queued_ops == [["propose", nil]] }
+      end
+
+      def test_the_chosen_proposal_survives_a_reload
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        wait_for('g.box.component[data-id="component:p1/reports"]')
+        wait_until(-> { "session.json never held the proposal" }) do
+          File.exist?(@workspace.path("session.json")) && JSON.parse(File.read(@workspace.path("session.json")))["proposal"] == "p1"
+        end
+        @browser.goto("http://127.0.0.1:#{@server.port}/")
+        wait_for('g.box.component[data-id="component:p1/reports"]')
+        assert_equal "p1", @browser.evaluate(%(document.getElementById("proposal").value))
+      end
+
+      def test_a_proposal_that_leaves_the_policy_falls_back_to_the_real_diagram_with_a_toast
+        add_proposal(reports_first)
+        @browser.goto(@server.url)
+        wait_for('#proposal option[value="p1"]')
+        choose("p1")
+        wait_for('g.box.component[data-id="component:p1/reports"]')
+        add_proposal(nil)
+        wait_for_text("#toast", "proposal p1 is gone: showing the real diagram")
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal ["rails_shapes"], crumbs
+        wait_until(-> { "session.json still names the gone proposal" }) { File.exist?(@workspace.path("session.json")) && JSON.parse(File.read(@workspace.path("session.json")))["proposal"].nil? }
+      end
+
+      def test_escape_closes_an_open_context_menu_before_it_leaves_the_view
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="Reports"] text.title')
+        wait_for('g.box.class[data-id="Reports::Summary"] text.title').click(mode: :right)
+        wait_for("#menu.open")
+        press("Escape")
+        wait_until(-> { "the menu stayed open" }) { @browser.at_css("#menu.open").nil? }
+        assert_equal ["rails_shapes", "Reports"], crumbs
       end
 
       private

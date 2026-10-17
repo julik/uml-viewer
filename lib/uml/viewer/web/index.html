@@ -19,6 +19,7 @@
   g.box rect, g.box ellipse { fill: var(--box); stroke: var(--line); }
   g.box.foreign ellipse { stroke-dasharray: 4 3; }
   g.box.folder text.title { font-style: italic; }
+  g.box.component rect { stroke-width: 2; }
   text { fill: var(--fg); }
   text.level, text.more { fill: var(--muted); }
   path.arrow { fill: none; stroke: var(--line); stroke-width: 1.2; marker-end: url(#head); }
@@ -27,7 +28,7 @@
   #menu.open { display: flex; }
   #menu button { font: inherit; background: none; color: var(--fg); border: 0; padding: 6px 14px; text-align: left; cursor: pointer; }
   #toast { position: fixed; bottom: 12px; left: 12px; color: var(--red); }
-  #regen { font: inherit; background: none; color: var(--fg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; cursor: pointer; }
+  #regen, #propose, #proposal { font: inherit; background: none; color: var(--fg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; cursor: pointer; }
   aside { position: fixed; top: 36px; bottom: 0; overflow: auto; background: var(--box); border-left: 1px solid var(--line); padding: 8px 12px; z-index: 2; }
   aside h2 { font-size: 14px; margin: 4px 0 8px; }
   #card { right: 0; width: 360px; }
@@ -47,7 +48,7 @@
 </style>
 </head>
 <body>
-<div id="bar"><span id="crumbs"></span><button id="regen">Regen</button><span id="status"></span><span id="banner"></span></div>
+<div id="bar"><span id="crumbs"></span><select id="proposal" aria-label="diagram"></select><button id="propose">New proposal</button><button id="regen">Regen</button><span id="status"></span><span id="banner"></span></div>
 <svg id="diagram"></svg>
 <div id="menu"><button data-op="explain">Explain</button><button data-op="omit">Omit</button></div>
 <div id="toast"></div>
