@@ -837,6 +837,18 @@ module Uml
         assert_empty @browser.css("text.member")
       end
 
+      def test_a_proposal_warning_shows_in_the_banner
+        add_proposal(reports_first.merge("components" => [{ "id" => "ghosts", "members" => ["Ghost"] }]))
+        @browser.goto(@server.url)
+        wait_for_text("#banner", "scan warning: proposal p1: member Ghost matches no class in the diagram (check the name and the policy omit)")
+      end
+
+      def test_many_scan_warnings_show_a_count_and_the_first_one
+        add_proposal(reports_first.merge("components" => [{ "id" => "ghosts", "members" => ["Ghost", "Spook"] }]))
+        @browser.goto(@server.url)
+        wait_for_text("#banner", "2 scan warnings: proposal p1: member Ghost matches no class in the diagram (check the name and the policy omit); run uml-viewer scan for all")
+      end
+
       private
 
       def boot_coverage_project(resultset: :valid)

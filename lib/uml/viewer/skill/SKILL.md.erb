@@ -32,7 +32,7 @@ The user looks at a UML diagram of a project in the browser. A right-click puts 
 
 ## Proposals
 
-A proposal in `policy.yml` is `{id, name, components: [{id, label, members: [...]}], omit: [...]}`. The component order is the rank: the first component is level 0. A member is a class id, a namespace id, a folder box id such as `folder:models`, or a nested component. A class goes to its most specific member; classes in no component go to "Unassigned". Fill or change a proposal only when the user asks. Boxes of a proposal view (`component:<proposal id>/<component id>`, `unassigned:<proposal id>`) are under `proposals[].views` in `graph.json`.
+A proposal in `policy.yml` is `{id, name, components: [{id, label, members: [...]}], omit: [...]}`. The component order is the rank: the first component is level 0. A member is a class id, a namespace id, a folder box id such as `folder:models`, or a nested component. A class goes to its most specific member; classes in no component go to "Unassigned". Fill or change a proposal only when the user asks. Boxes of a proposal view (`component:<proposal id>/<component id>`, `unassigned:<proposal id>`) are under `proposals[].views` in `graph.json`. After you change a proposal, read `summary.warnings` in `graph.json` once the graph updates, and tell the user each line that starts with `proposal <id>:`.
 
 ## Rules
 

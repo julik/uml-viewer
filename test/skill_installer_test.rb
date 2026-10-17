@@ -72,6 +72,11 @@ module Uml
         assert_includes text, "Boxes of a proposal view (`component:<proposal id>/<component id>`, `unassigned:<proposal id>`) are under `proposals[].views` in `graph.json`."
       end
 
+      def test_the_skill_tells_the_agent_to_read_the_proposal_warnings_after_a_change
+        text = install("/x/uml-viewer")
+        assert_includes text, "After you change a proposal, read `summary.warnings` in `graph.json` once the graph updates, and tell the user each line that starts with `proposal <id>:`."
+      end
+
       def test_propose_names_the_proposal_from_the_command_time_and_gives_the_full_shape
         text = install("/x/uml-viewer")
         assert_includes text, "`{id: p<command id>, name: \"Proposal <at>\", components: [], omit: []}`"
