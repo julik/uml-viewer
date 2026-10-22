@@ -2,7 +2,7 @@
 
 A live UML diagram of a Ruby or Rails project in the browser. Red arrows break the Dependency Rule. A Claude Code session handles your clicks.
 
-    gem build uml-viewer.gemspec && gem install ./uml-viewer-0.1.0.gem
+    gem install uml-viewer
     uml-viewer install-skill
     uml-viewer path/to/project
 

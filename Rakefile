@@ -1,3 +1,4 @@
+require "bundler/gem_tasks"
 require "rake/testtask"
 
 Rake::TestTask.new(:test) do |t|
@@ -6,6 +7,8 @@ Rake::TestTask.new(:test) do |t|
 end
 
 task default: :test
+
+Rake::Task["release"].enhance(["test"])
 
 desc "Scan each project in UML_VIEWER_SMOKE (paths separated by :) and check expect.yml"
 task :smoke do
