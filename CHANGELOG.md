@@ -4,6 +4,11 @@ All notable changes are documented here. The format is based on [Keep a Changelo
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-23
+
+### Changed
+- The gem description credits unclebob/uml-viewer by Robert C. Martin (Uncle Bob), as the README does.
+
 ## [0.1.0] - 2026-10-23
 
 ### Added

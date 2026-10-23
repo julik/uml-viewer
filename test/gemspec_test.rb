@@ -21,8 +21,9 @@ module Uml
         assert_includes SPEC.files, "CHANGELOG.md"
       end
 
-      def test_the_package_has_a_description
-        refute_empty SPEC.description.to_s
+      def test_the_description_credits_the_original_tool_by_uncle_bob
+        assert_includes SPEC.description, "unclebob/uml-viewer"
+        assert_includes SPEC.description, "Robert C. Martin (Uncle Bob)"
       end
     end
   end

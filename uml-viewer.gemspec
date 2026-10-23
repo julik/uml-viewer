@@ -8,7 +8,8 @@ Gem::Specification.new do |spec|
   spec.description = "uml-viewer scans a Ruby or Rails project with Prism and shows it as a UML diagram in the browser. " \
                      "Red arrows show dependencies that break the Dependency Rule between Rails layers. Box colors show " \
                      "CRAP from a SimpleCov run. A right-click sends a command to a Claude Code session, which explains " \
-                     "the code, changes the policy or writes a proposal. Nothing is written into the viewed project."
+                     "the code, changes the policy or writes a proposal. Nothing is written into the viewed project. " \
+                     "Based on the ideas of unclebob/uml-viewer by Robert C. Martin (Uncle Bob), a Clojure tool. No code is copied."
   spec.homepage = "https://github.com/roberthopman/uml-viewer"
   spec.licenses = ["MIT", "EPL-2.0"]
   spec.required_ruby_version = ">= 3.3"
