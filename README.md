@@ -18,6 +18,7 @@ uml-viewer path/to/project
 
 - Double-click a box to open it. Press `Esc` to go back.
 - Double-click a class to open its card. Click an operation to see its source.
+- Press `Esc` or click empty space to close the source panel and the class card.
 - Hover an arrow to see the class pairs behind it.
 - Right-click a box or a class to send **Explain** or **Omit** to Claude.
 

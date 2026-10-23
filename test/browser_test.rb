@@ -455,10 +455,11 @@ module Uml
         assert_equal color_of("--fg"), style_of('g.box.class[data-id="Order"] rect', "stroke")
       end
 
-      def test_hovering_a_member_name_washes_its_line
+      def test_a_member_line_has_no_border_or_fill_until_it_is_hovered
         @browser.goto(@server.url)
         wait_for('rect.wash[data-id="Order"]')
-        refute_equal color_of("--hl"), style_of('rect.wash[data-id="Order"]', "fill")
+        assert_equal "none", style_of('rect.wash[data-id="Order"]', "stroke")
+        assert_equal "rgba(0, 0, 0, 0)", style_of('rect.wash[data-id="Order"]', "fill")
         hover('text.member[data-id="Order"]')
         assert_equal color_of("--hl"), style_of('rect.wash[data-id="Order"]', "fill")
       end
@@ -531,6 +532,36 @@ module Uml
         press("Escape")
         wait_until(-> { "the card stayed open" }) { @browser.at_css("#card")["hidden"] }
         assert_equal ["rails_shapes", "Reports"], crumbs
+      end
+
+      def click_empty_space
+        x, y = @browser.evaluate(<<~JS)
+          (() => {
+            for (let y = 60; y < innerHeight; y += 20) for (let x = 10; x < innerWidth - 400; x += 20) if (document.elementFromPoint(x, y)?.id === "diagram") return [x, y];
+          })()
+        JS
+        @browser.mouse.click(x: x, y: y)
+      end
+
+      def test_a_click_on_empty_space_closes_the_source_and_the_card
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Order"]')
+        wait_for_text("#card h2", "Order")
+        @browser.css("#card li.op").find { |op| op.text.start_with?("+ total") }.click
+        wait_for_text("#source h2", "app/models/order.rb:7")
+        click_empty_space
+        wait_until(-> { "the source panel stayed open" }) { @browser.at_css("#source")["hidden"] }
+        assert @browser.at_css("#card")["hidden"]
+        assert_equal ["rails_shapes"], crumbs
+      end
+
+      def test_a_click_on_a_box_keeps_the_card_open
+        @browser.goto(@server.url)
+        double_click('text.member[data-id="Order"]')
+        wait_for_text("#card h2", "Order")
+        wait_for('g.box[data-id="Reports"] text.title').click
+        sleep 0.3
+        refute @browser.at_css("#card")["hidden"]
       end
 
       def test_hovering_a_red_arrow_lists_its_pairs_with_the_red_ones_marked

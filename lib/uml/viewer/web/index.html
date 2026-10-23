@@ -16,7 +16,7 @@
   #banner { color: var(--red); }
   #banner:empty { display: none; }
   svg { position: absolute; top: 36px; left: 0; }
-  g.box rect, g.box ellipse { fill: var(--box); stroke: var(--line); }
+  g.box rect:not(.wash), g.box ellipse { fill: var(--box); stroke: var(--line); }
   g.box.foreign ellipse { stroke-dasharray: 4 3; }
   g.box.folder text.title { font-style: italic; }
   g.box.component rect { stroke-width: 2; }
