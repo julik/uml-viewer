@@ -400,6 +400,30 @@ module Uml
         @browser.css("#card li.op").map(&:text)
       end
 
+      def cursor(css)
+        @browser.evaluate("getComputedStyle(document.querySelector(#{css.to_json})).cursor")
+      end
+
+      def test_boxes_and_names_that_open_on_a_double_click_show_the_hand_cursor
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="folder:models"]')
+        assert_equal "pointer", cursor('g.box[data-id="folder:models"] rect')
+        assert_equal "pointer", cursor('g.box[data-id="Reports"] rect')
+        assert_equal "pointer", cursor('text.member[data-id="Order"]')
+        double_click('g.box[data-id="folder:models"] text.title')
+        wait_for('g.box.class[data-id="Order"]')
+        assert_equal "pointer", cursor('g.box.class[data-id="Order"] rect')
+      end
+
+      def test_a_foreign_oval_that_opens_nothing_keeps_the_default_cursor
+        reboot(build_project("app/models/order.rb" => "class Order\n  def dump = JSON.generate({})\nend\n"))
+        @workspace.write_atomic("policy.yml", File.read(@workspace.path("policy.yml")).sub(/^foreign:.*$/, "foreign: [JSON]"))
+        Graph.build(@workspace)
+        @browser.goto(@server.url)
+        wait_for('g.box.foreign[data-id="foreign:JSON"] ellipse')
+        assert_equal "auto", cursor('g.box.foreign[data-id="foreign:JSON"] ellipse')
+      end
+
       def test_double_click_on_a_class_opens_its_card_with_ops_level_and_files
         @browser.goto(@server.url)
         double_click('text.member[data-id="Order"]')

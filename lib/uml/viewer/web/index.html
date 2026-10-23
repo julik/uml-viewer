@@ -20,6 +20,7 @@
   g.box.foreign ellipse { stroke-dasharray: 4 3; }
   g.box.folder text.title { font-style: italic; }
   g.box.component rect { stroke-width: 2; }
+  g.box:not(.foreign) { cursor: pointer; }
   text { fill: var(--fg); }
   text.level, text.more { fill: var(--muted); }
   path.arrow { fill: none; stroke: var(--line); stroke-width: 1.2; marker-end: url(#head); }
