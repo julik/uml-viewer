@@ -213,7 +213,7 @@ module Uml
       def test_a_refused_command_shows_the_server_reason_in_a_toast
         @browser.goto(@server.url)
         wait_for('text.member[data-id="Order"]')
-        @browser.evaluate('document.querySelector(\'text.member[data-id="Order"]\').dataset.id = "Gone"')
+        @browser.evaluate('document.querySelectorAll(\'text.member[data-id="Order"], rect.wash[data-id="Order"]\').forEach((node) => { node.dataset.id = "Gone"; })')
         right_click_menu('text.member[data-id="Gone"]', "explain")
         wait_for_text("#toast", "command not sent: unknown target: Gone")
         assert_equal 0, Mailbox.new(@workspace).size
@@ -415,13 +415,59 @@ module Uml
         assert_equal "pointer", cursor('g.box.class[data-id="Order"] rect')
       end
 
-      def test_a_foreign_oval_that_opens_nothing_keeps_the_default_cursor
+      def test_a_foreign_oval_that_opens_nothing_keeps_the_default_cursor_and_border_on_hover
         reboot(build_project("app/models/order.rb" => "class Order\n  def dump = JSON.generate({})\nend\n"))
         @workspace.write_atomic("policy.yml", File.read(@workspace.path("policy.yml")).sub(/^foreign:.*$/, "foreign: [JSON]"))
         Graph.build(@workspace)
         @browser.goto(@server.url)
         wait_for('g.box.foreign[data-id="foreign:JSON"] ellipse')
         assert_equal "auto", cursor('g.box.foreign[data-id="foreign:JSON"] ellipse')
+        before = style_of('g.box.foreign[data-id="foreign:JSON"] ellipse', "stroke")
+        hover('g.box.foreign[data-id="foreign:JSON"] text.title')
+        assert_equal before, style_of('g.box.foreign[data-id="foreign:JSON"] ellipse', "stroke")
+      end
+
+      def style_of(css, property)
+        @browser.evaluate("getComputedStyle(document.querySelector(#{css.to_json})).#{property}")
+      end
+
+      def color_of(token)
+        @browser.evaluate(<<~JS)
+          (() => { const probe = document.createElement("div"); probe.style.color = "var(#{token})"; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })()
+        JS
+      end
+
+      def hover(css)
+        x, y = @browser.evaluate("(() => { const box = document.querySelector(#{css.to_json}).getBoundingClientRect(); return [box.x + box.width / 2, box.y + box.height / 2]; })()")
+        @browser.mouse.move(x: x, y: y)
+      end
+
+      def open_models_view
+        @browser.goto(@server.url)
+        double_click('g.box[data-id="folder:models"] text.title')
+        wait_for('g.box.class[data-id="Order"]')
+      end
+
+      def test_hovering_a_class_box_draws_its_border_in_the_text_color
+        open_models_view
+        refute_equal color_of("--fg"), style_of('g.box.class[data-id="Order"] rect', "stroke")
+        hover('g.box.class[data-id="Order"] text.title')
+        assert_equal color_of("--fg"), style_of('g.box.class[data-id="Order"] rect', "stroke")
+      end
+
+      def test_hovering_a_member_name_washes_its_line
+        @browser.goto(@server.url)
+        wait_for('rect.wash[data-id="Order"]')
+        refute_equal color_of("--hl"), style_of('rect.wash[data-id="Order"]', "fill")
+        hover('text.member[data-id="Order"]')
+        assert_equal color_of("--hl"), style_of('rect.wash[data-id="Order"]', "fill")
+      end
+
+      def test_a_double_click_on_the_wash_beside_a_name_opens_that_class
+        @browser.goto(@server.url)
+        wait_for('rect.wash[data-id="Order"]')
+        @browser.evaluate(%(document.querySelector('rect.wash[data-id="Order"]').dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))))
+        wait_for_text("#card h2", "Order")
       end
 
       def test_double_click_on_a_class_opens_its_card_with_ops_level_and_files
@@ -472,7 +518,7 @@ module Uml
       def test_a_class_that_left_the_graph_shows_a_toast_instead_of_a_card
         @browser.goto(@server.url)
         wait_for('text.member[data-id="Order"]')
-        @browser.evaluate('document.querySelector(\'text.member[data-id="Order"]\').dataset.id = "Gone"')
+        @browser.evaluate('document.querySelectorAll(\'text.member[data-id="Order"], rect.wash[data-id="Order"]\').forEach((node) => { node.dataset.id = "Gone"; })')
         double_click('text.member[data-id="Gone"]')
         wait_for_text("#toast", "class Gone is not in the graph")
       end
@@ -623,11 +669,11 @@ module Uml
         assert clear, "the M dot overlaps the last member line"
       end
 
-      def add_proposal(proposal)
+      def add_proposal(proposal, live: false)
         policy = YAML.safe_load(File.read(@workspace.path("policy.yml")))
         policy["proposals"] = [proposal].compact
         @workspace.write_atomic("policy.yml", YAML.dump(policy))
-        Graph.build(@workspace)
+        live ? Graph.build(@workspace) : reboot(@workspace.root)
       end
 
       def reports_first
@@ -726,7 +772,7 @@ module Uml
         wait_for('#proposal option[value="p1"]')
         choose("p1")
         wait_for('g.box.component[data-id="component:p1/reports"]')
-        add_proposal(nil)
+        add_proposal(nil, live: true)
         wait_for_text("#toast", "proposal p1 is gone: showing the real diagram")
         wait_for('g.box[data-id="folder:models"]')
         assert_equal ["rails_shapes"], crumbs

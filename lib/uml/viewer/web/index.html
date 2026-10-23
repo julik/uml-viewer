@@ -21,6 +21,10 @@
   g.box.folder text.title { font-style: italic; }
   g.box.component rect { stroke-width: 2; }
   g.box:not(.foreign) { cursor: pointer; }
+  g.box:not(.foreign):hover > rect:not(.wash) { stroke: var(--fg); }
+  rect.wash { fill: transparent; }
+  rect.wash:hover { fill: var(--hl); }
+  text.member { pointer-events: none; }
   text { fill: var(--fg); }
   text.level, text.more { fill: var(--muted); }
   path.arrow { fill: none; stroke: var(--line); stroke-width: 1.2; marker-end: url(#head); }
