@@ -4,6 +4,14 @@ All notable changes are documented here. The format is based on [Keep a Changelo
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
+### Added
+- A box and a member name that open on a double-click show the hand cursor.
+- A hovered box gets a border in the text color, and a hovered member name gets a light background behind its line, as in the original tool.
+- A double-click beside a member name, on its line, also opens it.
+- A click on empty space closes the source panel and the class card.
+
 ## [0.1.1] - 2026-10-23
 
 ### Changed
