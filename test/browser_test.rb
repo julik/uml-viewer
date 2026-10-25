@@ -650,6 +650,25 @@ module Uml
         assert_equal [430, 430], scroll
       end
 
+      def test_a_pan_that_loses_the_pointer_outside_the_window_picks_up_again_when_the_pointer_returns_with_the_button_held
+        open_wide_scrolled_screen
+        @browser.evaluate("scrollTo(100, 100)")
+        wait_until(-> { "the screen did not scroll: #{scroll}" }) { scroll == [100, 100] }
+        @browser.evaluate(%(document.getElementById("diagram").addEventListener("pointerdown", (event) => { window.pressedPointer = event.pointerId; })))
+        middle_press(300, 300)
+        middle_drag(-30, -30)
+        assert_equal [430, 430], scroll
+        @browser.evaluate(%(document.getElementById("diagram").releasePointerCapture(window.pressedPointer)))
+        middle_drag(300, 10)
+        assert_equal [100, 390], scroll
+        assert_equal "grabbing", cursor("html")
+        assert @browser.evaluate(%(document.getElementById("diagram").hasPointerCapture(window.pressedPointer))), "the diagram did not take the pointer back"
+        middle_drag(-30, -30)
+        assert_equal [430, 430], scroll
+        middle_release(-30, -30)
+        refute_equal "grabbing", cursor("html")
+      end
+
       def test_a_move_without_the_middle_button_ends_a_pan_whose_release_was_never_seen
         open_wide_scrolled_screen
         middle_press(300, 300)
@@ -660,14 +679,14 @@ module Uml
         assert_equal [420, 320], scroll
       end
 
-      def test_leaving_the_window_for_another_app_ends_the_pan
+      def test_a_pan_survives_the_window_losing_focus_while_the_button_is_held
         open_wide_scrolled_screen
         middle_press(300, 300)
         middle_drag(280, 280)
         @browser.evaluate(%(dispatchEvent(new Event("blur"))))
-        refute_equal "grabbing", cursor("html")
         middle_drag(200, 200)
-        assert_equal [420, 320], scroll
+        assert_equal [500, 400], scroll
+        assert_equal "grabbing", cursor("html")
       end
 
       def test_a_middle_click_without_a_drag_still_reaches_the_page
