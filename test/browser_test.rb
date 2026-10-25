@@ -568,6 +568,155 @@ module Uml
         refute @browser.at_css("#card")["hidden"]
       end
 
+      def open_wide_scrolled_screen
+        reboot(build_project((1..30).to_h { |number| [format("app/models/ns%02d/item.rb", number), "module Ns#{format('%02d', number)}\n  class Item\n  end\nend\n"] }))
+        @browser.goto(@server.url)
+        wait_for('g.box[data-id="Ns30"]')
+        4.times { press("=", ctrl: true) }
+        @browser.evaluate("scrollTo(400, 300)")
+        wait_until(-> { "the screen did not scroll: #{scroll}" }) { scroll == [400, 300] }
+      end
+
+      def scroll
+        @browser.evaluate("[scrollX, scrollY]")
+      end
+
+      def center_of(css)
+        @browser.evaluate("(() => { const box = document.querySelector(#{css.to_json}).getBoundingClientRect(); return [box.x + box.width / 2, box.y + box.height / 2]; })()")
+      end
+
+      def visible_box
+        @browser.evaluate(<<~JS)
+          [...document.querySelectorAll("g.box text.title")].map((title) => {
+            const box = title.getBoundingClientRect();
+            return [title.parentNode.dataset.id, box.x + box.width / 2, box.y + box.height / 2];
+          }).find(([, x, y]) => x > 100 && x < innerWidth - 100 && y > 100 && y < innerHeight - 100)
+        JS
+      end
+
+      def record_middle_clicks
+        @browser.evaluate(<<~JS)
+          (() => {
+            window.middleClicks = [];
+            document.addEventListener("auxclick", (event) => window.middleClicks.push({ button: event.button, prevented: event.defaultPrevented }));
+          })()
+        JS
+      end
+
+      def send_mouse(type, x, y, button: "none", buttons: 0)
+        @browser.page.command("Input.dispatchMouseEvent", type: type, x: x, y: y, button: button, buttons: buttons, clickCount: type == "mouseMoved" ? 0 : 1)
+      end
+
+      def middle_press(x, y)
+        send_mouse("mouseMoved", x, y)
+        send_mouse("mousePressed", x, y, button: "middle", buttons: 4)
+      end
+
+      def middle_drag(x, y)
+        send_mouse("mouseMoved", x, y, button: "middle", buttons: 4)
+      end
+
+      def middle_release(x, y)
+        send_mouse("mouseReleased", x, y, button: "middle")
+      end
+
+      def test_a_middle_drag_on_a_box_pans_the_diagram_with_the_grabbing_hand
+        open_wide_scrolled_screen
+        id, x, y = visible_box
+        middle_press(x, y)
+        middle_drag(x - 50, y - 40)
+        middle_drag(x - 100, y - 80)
+        assert_equal [500, 380], scroll
+        assert_equal "grabbing", cursor(%(g.box[data-id="#{id}"] rect))
+        assert_equal "grabbing", cursor("html")
+        middle_release(x - 100, y - 80)
+        assert_equal "pointer", cursor(%(g.box[data-id="#{id}"] rect))
+        assert_equal [500, 380], scroll
+        assert_empty crumbs.drop(1)
+      end
+
+      def test_a_middle_drag_that_leaves_the_window_keeps_panning_and_ends_on_the_release_outside
+        open_wide_scrolled_screen
+        @browser.evaluate("scrollTo(100, 100)")
+        wait_until(-> { "the screen did not scroll: #{scroll}" }) { scroll == [100, 100] }
+        middle_press(300, 300)
+        middle_drag(300, 10)
+        assert_equal [100, 390], scroll
+        middle_drag(-30, -30)
+        assert_equal [430, 430], scroll
+        middle_release(-30, -30)
+        refute_equal "grabbing", cursor("html")
+        send_mouse("mouseMoved", 300, 300)
+        assert_equal [430, 430], scroll
+      end
+
+      def test_a_move_without_the_middle_button_ends_a_pan_whose_release_was_never_seen
+        open_wide_scrolled_screen
+        middle_press(300, 300)
+        middle_drag(280, 280)
+        assert_equal [420, 320], scroll
+        send_mouse("mouseMoved", 200, 200)
+        refute_equal "grabbing", cursor("html")
+        assert_equal [420, 320], scroll
+      end
+
+      def test_leaving_the_window_for_another_app_ends_the_pan
+        open_wide_scrolled_screen
+        middle_press(300, 300)
+        middle_drag(280, 280)
+        @browser.evaluate(%(dispatchEvent(new Event("blur"))))
+        refute_equal "grabbing", cursor("html")
+        middle_drag(200, 200)
+        assert_equal [420, 320], scroll
+      end
+
+      def test_a_middle_click_without_a_drag_still_reaches_the_page
+        open_wide_scrolled_screen
+        record_middle_clicks
+        _, x, y = visible_box
+        @browser.mouse.click(x: x, y: y, button: :middle)
+        wait_until(-> { "no middle click reached the page" }) { @browser.evaluate("window.middleClicks.length") == 1 }
+        assert_equal [{ "button" => 1, "prevented" => false }], @browser.evaluate("window.middleClicks")
+        assert_equal [400, 300], scroll
+      end
+
+      def test_a_middle_drag_is_not_also_a_middle_click
+        open_wide_scrolled_screen
+        record_middle_clicks
+        _, x, y = visible_box
+        middle_press(x, y)
+        middle_drag(x - 30, y - 30)
+        middle_release(x - 30, y - 30)
+        sleep 0.2
+        assert_empty @browser.evaluate("window.middleClicks")
+      end
+
+      def test_a_middle_click_on_a_link_in_the_diagram_keeps_its_default_and_does_not_pan
+        open_wide_scrolled_screen
+        @browser.evaluate(<<~JS)
+          (() => {
+            const link = document.createElementNS("http://www.w3.org/2000/svg", "a");
+            link.setAttribute("href", "#elsewhere");
+            link.id = "link";
+            link.innerHTML = '<rect x="400" y="300" width="200" height="100" fill="red"></rect>';
+            document.getElementById("diagram").append(link);
+            window.linkDowns = [];
+            link.addEventListener("pointerdown", (event) => setTimeout(() => window.linkDowns.push(event.defaultPrevented)));
+          })()
+        JS
+        record_middle_clicks
+        x, y = center_of("#link rect")
+        middle_press(x, y)
+        middle_drag(x - 30, y - 30)
+        refute_equal "grabbing", cursor("html")
+        middle_drag(x, y)
+        middle_release(x, y)
+        wait_until(-> { "no middle click reached the link" }) { @browser.evaluate("window.middleClicks.length") == 1 }
+        assert_equal [false], @browser.evaluate("window.linkDowns")
+        assert_equal [{ "button" => 1, "prevented" => false }], @browser.evaluate("window.middleClicks")
+        assert_equal [400, 300], scroll
+      end
+
       def test_hovering_a_red_arrow_lists_its_pairs_with_the_red_ones_marked
         @browser.goto(@server.url)
         hit = 'path.hit.violating[data-from="folder:models"][data-to="folder:services"]'
