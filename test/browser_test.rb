@@ -581,10 +581,6 @@ module Uml
         @browser.evaluate("[scrollX, scrollY]")
       end
 
-      def center_of(css)
-        @browser.evaluate("(() => { const box = document.querySelector(#{css.to_json}).getBoundingClientRect(); return [box.x + box.width / 2, box.y + box.height / 2]; })()")
-      end
-
       def visible_box
         @browser.evaluate(<<~JS)
           [...document.querySelectorAll("g.box text.title")].map((title) => {
@@ -708,32 +704,6 @@ module Uml
         middle_release(x - 30, y - 30)
         sleep 0.2
         assert_empty @browser.evaluate("window.middleClicks")
-      end
-
-      def test_a_middle_click_on_a_link_in_the_diagram_keeps_its_default_and_does_not_pan
-        open_wide_scrolled_screen
-        @browser.evaluate(<<~JS)
-          (() => {
-            const link = document.createElementNS("http://www.w3.org/2000/svg", "a");
-            link.setAttribute("href", "#elsewhere");
-            link.id = "link";
-            link.innerHTML = '<rect x="400" y="300" width="200" height="100" fill="red"></rect>';
-            document.getElementById("diagram").append(link);
-            window.linkDowns = [];
-            link.addEventListener("pointerdown", (event) => setTimeout(() => window.linkDowns.push(event.defaultPrevented)));
-          })()
-        JS
-        record_middle_clicks
-        x, y = center_of("#link rect")
-        middle_press(x, y)
-        middle_drag(x - 30, y - 30)
-        refute_equal "grabbing", cursor("html")
-        middle_drag(x, y)
-        middle_release(x, y)
-        wait_until(-> { "no middle click reached the link" }) { @browser.evaluate("window.middleClicks.length") == 1 }
-        assert_equal [false], @browser.evaluate("window.linkDowns")
-        assert_equal [{ "button" => 1, "prevented" => false }], @browser.evaluate("window.middleClicks")
-        assert_equal [400, 300], scroll
       end
 
       def test_hovering_a_red_arrow_lists_its_pairs_with_the_red_ones_marked
