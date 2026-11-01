@@ -442,7 +442,7 @@ POST /scans                rescan now (the Regen button); 202
 - A view shows the child boxes and the classes of the open box. An edge shows once, in the view where the box paths of its two ends split, as one arrow between the two child nodes there. Foreign ovals show on the first screen only.
 - A box whose folder is in no row of `levels:` sits above the highest level.
 - Hover an arrow: popup with every `from -> to` pair it bundles. Violating pairs are red.
-- Double-click a class: class card with the ops (`+` public, `-` private), cc, coverage, CRAP, the level, the files, and the parse errors.
+- Click a class: class card with the ops (`+` public, `-` private), cc, coverage, CRAP, the level, the files, and the parse errors.
 - Click an op: a source panel opens on that file at that line, read only.
 - Declutter: a button in the top bar and the `d` key cycle five modes, each one adding to the one before: `none`, `one arrow per pair` (the two arrows between two boxes become one line with a head at each end that has edges), `triangles` (only the heads, no lines), `hide members` (no member lines in the boxes), `hide classes` (class nodes and their arrows leave the view). When `hide classes` leaves a view empty, the diagram says "declutter hides all N classes in this view: press d". The mode is part of the saved view.
 - Level or level range at the top left of each box. Boxes with lower levels sit lower. A violating arrow is red, in either direction.

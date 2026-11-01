@@ -75,6 +75,10 @@ module Uml
         @browser.evaluate(%(document.dispatchEvent(new KeyboardEvent("keydown", { key: #{key.to_json}, ctrlKey: #{ctrl} }))))
       end
 
+      def click(css)
+        wait_for(css).click
+      end
+
       def double_click(css)
         wait_for(css).click(mode: :double)
       end
@@ -404,7 +408,7 @@ module Uml
         @browser.evaluate("getComputedStyle(document.querySelector(#{css.to_json})).cursor")
       end
 
-      def test_boxes_and_names_that_open_on_a_double_click_show_the_hand_cursor
+      def test_boxes_and_names_that_open_on_a_click_show_the_hand_cursor
         @browser.goto(@server.url)
         wait_for('g.box[data-id="folder:models"]')
         assert_equal "pointer", cursor('g.box[data-id="folder:models"] rect')
@@ -464,16 +468,16 @@ module Uml
         assert_equal color_of("--hl"), style_of('rect.wash[data-id="Order"]', "fill")
       end
 
-      def test_a_double_click_on_the_wash_beside_a_name_opens_that_class
+      def test_a_click_on_the_wash_beside_a_name_opens_that_class
         @browser.goto(@server.url)
         wait_for('rect.wash[data-id="Order"]')
-        @browser.evaluate(%(document.querySelector('rect.wash[data-id="Order"]').dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))))
+        @browser.evaluate(%(document.querySelector('rect.wash[data-id="Order"]').dispatchEvent(new MouseEvent("click", { bubbles: true }))))
         wait_for_text("#card h2", "Order")
       end
 
-      def test_double_click_on_a_class_opens_its_card_with_ops_level_and_files
+      def test_a_single_click_on_a_class_opens_its_card_with_ops_level_and_files
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for_text("#card h2", "Order")
         assert_includes @browser.at_css("#card").text, "«class» · models · level 0"
         assert_equal ["app/models/order.rb"], @browser.css("#card p.file").map(&:text)
@@ -484,7 +488,7 @@ module Uml
       def test_the_card_shows_each_visibility_sign
         @browser.goto(@server.url)
         double_click('g.box[data-id="Reports"] text.title')
-        double_click('g.box.class[data-id="Reports::Exporter"] text.title')
+        click('g.box.class[data-id="Reports::Exporter"] text.title')
         wait_for_text("#card h2", "Reports::Exporter")
         ["+ self.build  cc 1", "- self.secret  cc 1", "+ run  cc 2", "# rows  cc 1", "- format  cc 1"].each do |text|
           assert_includes op_texts, text
@@ -493,14 +497,14 @@ module Uml
 
       def test_the_card_of_a_broken_file_shows_its_parse_errors
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Broken"]')
+        click('text.member[data-id="Broken"]')
         wait_for("#card h3.error")
         assert_match(/\Aline \d+: /, @browser.at_css("#card p.error").text)
       end
 
       def test_a_click_on_an_op_opens_the_source_at_its_line
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for_text("#card h2", "Order")
         @browser.css("#card li.op").find { |op| op.text.start_with?("+ total") }.click
         wait_for_text("#source h2", "app/models/order.rb:7")
@@ -509,7 +513,7 @@ module Uml
 
       def test_a_refused_source_file_shows_the_reason_in_the_panel
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for("#card li.op")
         @browser.evaluate('document.querySelector("#card li.op").dataset.file = "Gemfile"')
         @browser.at_css("#card li.op").click
@@ -520,14 +524,14 @@ module Uml
         @browser.goto(@server.url)
         wait_for('text.member[data-id="Order"]')
         @browser.evaluate('document.querySelectorAll(\'text.member[data-id="Order"], rect.wash[data-id="Order"]\').forEach((node) => { node.dataset.id = "Gone"; })')
-        double_click('text.member[data-id="Gone"]')
+        click('text.member[data-id="Gone"]')
         wait_for_text("#toast", "class Gone is not in the graph")
       end
 
       def test_escape_closes_the_card_before_it_leaves_the_view
         @browser.goto(@server.url)
         double_click('g.box[data-id="Reports"] text.title')
-        double_click('g.box.class[data-id="Reports::Summary"] text.title')
+        click('g.box.class[data-id="Reports::Summary"] text.title')
         wait_for_text("#card h2", "Reports::Summary")
         press("Escape")
         wait_until(-> { "the card stayed open" }) { @browser.at_css("#card")["hidden"] }
@@ -545,7 +549,7 @@ module Uml
 
       def test_a_click_on_empty_space_closes_the_source_and_the_card
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for_text("#card h2", "Order")
         @browser.css("#card li.op").find { |op| op.text.start_with?("+ total") }.click
         wait_for_text("#source h2", "app/models/order.rb:7")
@@ -557,7 +561,7 @@ module Uml
 
       def test_a_click_on_a_box_keeps_the_card_open
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for_text("#card h2", "Order")
         wait_for('g.box[data-id="Reports"] text.title').click
         sleep 0.3
@@ -636,7 +640,7 @@ module Uml
         wait_for('g.box[data-id="folder:models"][data-grade="10"]')
         assert_equal "10", @browser.at_css('g.box[data-id="folder:models"] circle.dot.c').attribute("data-grade")
         assert_equal "", @browser.at_css('g.box[data-id="folder:models"] circle.dot.m').attribute("data-grade")
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for_text("#card h2", "Order")
         assert_includes @browser.at_css("#card").text, "C grade 10 (mu 1.0, sigma 0.0)"
         assert_includes @browser.at_css("#card").text, "M grade: no data"
@@ -646,7 +650,7 @@ module Uml
       def test_a_class_the_tests_never_loaded_shows_coverage_zero_and_the_note
         boot_coverage_project
         @browser.goto(@server.url)
-        double_click('text.member[data-id="Pricing"]')
+        click('text.member[data-id="Pricing"]')
         wait_for_text("#card h2", "Pricing")
         assert_includes op_texts, "+ rate  cc 2  cov 0%  crap 6.0"
         assert_equal ["not loaded by the tests"], @browser.css("#card p.note.coverage").map(&:text)
@@ -656,7 +660,7 @@ module Uml
         @browser.goto(@server.url)
         wait_for('g.box[data-id="folder:models"] circle.dot.c')
         assert_equal "", @browser.at_css('g.box[data-id="folder:models"]').attribute("data-grade")
-        double_click('text.member[data-id="Order"]')
+        click('text.member[data-id="Order"]')
         wait_for_text("#card h2", "Order")
         assert_includes @browser.at_css("#card").text, "C grade: no data"
         assert_includes @browser.css("#card p.note.coverage").map(&:text), "no coverage: run your tests with SimpleCov"
@@ -752,7 +756,7 @@ module Uml
         double_click('g.box.component[data-id="component:p1/reports"] text.title')
         wait_for('g.box.class[data-id="Reports::Summary"]')
         assert_equal ["Reports first", "reports"], crumbs
-        double_click('g.box.class[data-id="Reports::Summary"] text.title')
+        click('g.box.class[data-id="Reports::Summary"] text.title')
         wait_for_text("#card", "real level 1")
       end
 

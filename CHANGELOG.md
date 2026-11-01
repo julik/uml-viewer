@@ -4,6 +4,9 @@ All notable changes are documented here. The format is based on [Keep a Changelo
 
 ## [Unreleased]
 
+### Changed
+- A single click on a class opens its card. Before, the card opened on a double-click. A double-click on a box still opens its view.
+
 ## [0.1.2] - 2026-10-23
 
 ### Added
